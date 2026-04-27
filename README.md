@@ -1,4 +1,4 @@
-# Video Downloader Skill
+# Video Downloader
 
 ****
 
