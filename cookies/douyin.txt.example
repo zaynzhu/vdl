@@ -1,0 +1,4 @@
+# Netscape HTTP Cookie File
+# Place your Douyin cookies here (export from browser)
+# Rename this file to douyin.txt after filling in cookies
+.douyin.com	TRUE	/	FALSE	0	sessionid	your_sessionid_here
