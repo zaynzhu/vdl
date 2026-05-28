@@ -22,10 +22,9 @@ async def test_system():
     print("\n✓ Test 2: List supported platforms")
     platforms = downloader.list_supported_platforms()
     print(f"  Supported platforms: {', '.join(platforms)}")
-    assert len(platforms) == 3, f"Expected 3 platforms, got {len(platforms)}"
+    assert len(platforms) == 2, f"Expected 2 platforms, got {len(platforms)}"
     assert 'bilibili' in platforms
     assert 'douyin' in platforms
-    assert 'tiktok' in platforms
     
     # Test 3: URL validation
     print("\n✓ Test 3: URL validation")
@@ -48,7 +47,6 @@ async def test_system():
     test_urls = {
         'bilibili': 'https://www.bilibili.com/video/BV1xx411c7mD',
         'douyin': 'https://www.douyin.com/video/123456',
-        'tiktok': 'https://www.tiktok.com/@user/video/123456',
     }
     
     for platform, url in test_urls.items():
