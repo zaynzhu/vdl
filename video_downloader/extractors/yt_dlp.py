@@ -9,7 +9,7 @@ from datetime import datetime
 
 import yt_dlp
 
-from ..models import VideoMetadata, QualityOption, ContentType
+from ..models import VideoMetadata, QualityOption, ContentType, ExtractionContext
 from ..exceptions import PlatformError, VideoUnavailableError, UnsupportedPlatformError
 from ..logger import logger
 from .base import PlatformExtractor
@@ -35,13 +35,12 @@ class YtDlpExtractor(PlatformExtractor):
     DEFAULT_YDL_OPTS = {
         'quiet': True,
         'no_warnings': True,
-        'nocheckcertificate': True,
         'ignoreerrors': False,
     }
 
     def __init__(self):
         super().__init__()
-        logger.info("YtDlpExtractor initialized")
+        logger.debug("YtDlpExtractor initialized")
 
     def can_handle(self, url: str) -> bool:
         if not url:
@@ -60,11 +59,17 @@ class YtDlpExtractor(PlatformExtractor):
     async def extract_metadata(
         self,
         url: str,
-        cookies: Optional[Dict[str, str]] = None,
+        context: ExtractionContext,
+        *,
         cookie_file: Optional[str] = None,
         proxy: Optional[str] = None,
     ) -> VideoMetadata:
-        logger.info(f"[yt-dlp] Extracting metadata: {url}")
+        logger.debug(f"[yt-dlp] Extracting metadata: {url}")
+        # Unpack overrides from context when explicit kwargs are not provided
+        if cookie_file is None:
+            cookie_file = getattr(context, 'cookie_file', None)
+        if proxy is None:
+            proxy = getattr(context, 'proxy', None)
         ydl_opts = self._build_opts(cookie_file=cookie_file, proxy=proxy)
 
         try:
@@ -84,11 +89,11 @@ class YtDlpExtractor(PlatformExtractor):
         self,
         metadata: VideoMetadata,
         quality: Optional[str] = None,
-        cookies: Optional[Dict[str, str]] = None,
+        *,
         cookie_file: Optional[str] = None,
         proxy: Optional[str] = None,
     ) -> List[str]:
-        logger.info(f"[yt-dlp] Getting download URLs: {metadata.url}")
+        logger.debug(f"[yt-dlp] Getting download URLs: {metadata.url}")
         ydl_opts = self._build_opts(
             cookie_file=cookie_file,
             proxy=proxy,
@@ -118,6 +123,37 @@ class YtDlpExtractor(PlatformExtractor):
         with yt_dlp.YoutubeDL(opts) as ydl:
             return ydl.extract_info(url, download=False)
 
+    @staticmethod
+    def _map_quality(quality: str) -> str:
+        """Map human-readable quality to yt-dlp format string.
+
+        - "1080p", "720p", "480p" -> height-bounded format strings
+        - Strings already containing yt-dlp selectors (``[`` or ``+``) pass through as-is
+        """
+        presets = {
+            '1080p': 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best[height<=1080]',
+            '720p':  'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best[height<=720]',
+            '480p':  'bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/best[height<=480][ext=mp4]/best[height<=480]',
+        }
+
+        lower = quality.lower()
+        if lower in presets:
+            return presets[lower]
+
+        # Already a yt-dlp format string (contains selectors or merge operators)
+        if '[' in quality or '+' in quality:
+            return quality
+
+        # Fallback: treat as height specification like "1080"
+        digits = quality.replace('p', '').replace('P', '')
+        if digits.isdigit():
+            key = f"{digits}p"
+            if key in presets:
+                return presets[key]
+
+        # Ultimate fallback: best available
+        return 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
+
     def _build_opts(
         self,
         cookie_file: Optional[str] = None,
@@ -133,7 +169,7 @@ class YtDlpExtractor(PlatformExtractor):
             opts['proxy'] = proxy
 
         if quality:
-            opts['format'] = quality
+            opts['format'] = self._map_quality(quality)
         else:
             opts['format'] = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
 

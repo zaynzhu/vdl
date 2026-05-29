@@ -7,8 +7,29 @@ from datetime import datetime
 from unittest.mock import patch, MagicMock
 
 from video_downloader.extractors.yt_dlp import YtDlpExtractor
-from video_downloader.models import VideoMetadata, QualityOption, ContentType
+from video_downloader.models import (
+    VideoMetadata, QualityOption, ContentType,
+    ExtractionContext, Fingerprint,
+)
 from video_downloader.exceptions import PlatformError, VideoUnavailableError
+
+
+@pytest.fixture
+def context():
+    """Minimal ExtractionContext for testing."""
+    return ExtractionContext(
+        cookies=[],
+        fingerprint=Fingerprint(
+            user_agent="test-agent",
+            platform="test",
+            screen_width=1920,
+            screen_height=1080,
+            color_depth=24,
+            language="en",
+            timezone="UTC",
+            headers={},
+        ),
+    )
 
 
 class TestYtDlpCanHandle:
@@ -165,6 +186,42 @@ class TestYtDlpMetadataMapping:
         assert metadata.title == 'Test'
 
 
+class TestYtDlpMapQuality:
+    """Test human-readable quality mapping."""
+
+    def test_1080p(self):
+        result = YtDlpExtractor._map_quality("1080p")
+        assert "height<=1080" in result
+
+    def test_720p(self):
+        result = YtDlpExtractor._map_quality("720p")
+        assert "height<=720" in result
+
+    def test_480p(self):
+        result = YtDlpExtractor._map_quality("480p")
+        assert "height<=480" in result
+
+    def test_passthrough_ytdlp_format(self):
+        fmt = "bestvideo[height<=1080]+bestaudio/best"
+        assert YtDlpExtractor._map_quality(fmt) == fmt
+
+    def test_passthrough_with_plus(self):
+        fmt = "bestvideo+bestaudio"
+        assert YtDlpExtractor._map_quality(fmt) == fmt
+
+    def test_bare_digits(self):
+        result = YtDlpExtractor._map_quality("1080")
+        assert "height<=1080" in result
+
+    def test_uppercase_p(self):
+        result = YtDlpExtractor._map_quality("720P")
+        assert "height<=720" in result
+
+    def test_unknown_falls_back_to_best(self):
+        result = YtDlpExtractor._map_quality("4k")
+        assert result == "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
+
+
 class TestYtDlpBuildOpts:
     """Test yt-dlp options building."""
 
@@ -176,6 +233,10 @@ class TestYtDlpBuildOpts:
         assert opts['quiet'] is True
         assert opts['no_warnings'] is True
         assert 'format' in opts
+
+    def test_nocheckcertificate_removed(self):
+        opts = self.extractor._build_opts()
+        assert 'nocheckcertificate' not in opts
 
     def test_cookie_file(self):
         opts = self.extractor._build_opts(cookie_file='/path/to/cookies.txt')
@@ -189,6 +250,10 @@ class TestYtDlpBuildOpts:
         opts = self.extractor._build_opts(quality='best[height<=720]')
         assert opts['format'] == 'best[height<=720]'
 
+    def test_quality_mapped(self):
+        opts = self.extractor._build_opts(quality='1080p')
+        assert "height<=1080" in opts['format']
+
 
 class TestYtDlpExtractMetadata:
     """Test extract_metadata async method."""
@@ -196,8 +261,9 @@ class TestYtDlpExtractMetadata:
     def setup_method(self):
         self.extractor = YtDlpExtractor()
 
+    @pytest.mark.asyncio
     @patch.object(YtDlpExtractor, '_extract_info')
-    def test_extract_metadata_success(self, mock_extract):
+    async def test_extract_metadata_success(self, mock_extract, context):
         mock_extract.return_value = {
             'title': 'Test Video',
             'uploader': 'Author',
@@ -210,31 +276,24 @@ class TestYtDlpExtractMetadata:
             'id': 'abc',
             'formats': [],
         }
-        import asyncio
-        metadata = asyncio.get_event_loop().run_until_complete(
-            self.extractor.extract_metadata("https://www.youtube.com/watch?v=abc")
-        )
+        metadata = await self.extractor.extract_metadata("https://www.youtube.com/watch?v=abc", context)
         assert metadata.title == 'Test Video'
         assert metadata.platform == 'youtube'
 
+    @pytest.mark.asyncio
     @patch.object(YtDlpExtractor, '_extract_info')
-    def test_extract_metadata_unavailable(self, mock_extract):
+    async def test_extract_metadata_unavailable(self, mock_extract, context):
         import yt_dlp
         mock_extract.side_effect = yt_dlp.utils.DownloadError('Private video')
-        import asyncio
         with pytest.raises(VideoUnavailableError):
-            asyncio.get_event_loop().run_until_complete(
-                self.extractor.extract_metadata("https://www.youtube.com/watch?v=private")
-            )
+            await self.extractor.extract_metadata("https://www.youtube.com/watch?v=private", context)
 
+    @pytest.mark.asyncio
     @patch.object(YtDlpExtractor, '_extract_info')
-    def test_extract_metadata_none_result(self, mock_extract):
+    async def test_extract_metadata_none_result(self, mock_extract, context):
         mock_extract.return_value = None
-        import asyncio
         with pytest.raises(VideoUnavailableError):
-            asyncio.get_event_loop().run_until_complete(
-                self.extractor.extract_metadata("https://www.youtube.com/watch?v=none")
-            )
+            await self.extractor.extract_metadata("https://www.youtube.com/watch?v=none", context)
 
 
 class TestYtDlpGetDownloadUrls:
@@ -243,8 +302,9 @@ class TestYtDlpGetDownloadUrls:
     def setup_method(self):
         self.extractor = YtDlpExtractor()
 
+    @pytest.mark.asyncio
     @patch.object(YtDlpExtractor, '_extract_info')
-    def test_get_download_urls_from_url_field(self, mock_extract):
+    async def test_get_download_urls_from_url_field(self, mock_extract):
         mock_extract.return_value = {
             'url': 'https://example.com/video.mp4',
         }
@@ -260,14 +320,12 @@ class TestYtDlpGetDownloadUrls:
             quality_options=[],
             content_type=ContentType.VIDEO,
         )
-        import asyncio
-        urls = asyncio.get_event_loop().run_until_complete(
-            self.extractor.get_download_urls(metadata)
-        )
+        urls = await self.extractor.get_download_urls(metadata)
         assert urls == ['https://example.com/video.mp4']
 
+    @pytest.mark.asyncio
     @patch.object(YtDlpExtractor, '_extract_info')
-    def test_get_download_urls_from_formats(self, mock_extract):
+    async def test_get_download_urls_from_formats(self, mock_extract):
         mock_extract.return_value = {
             'formats': [
                 {'url': 'https://example.com/low.mp4'},
@@ -286,14 +344,12 @@ class TestYtDlpGetDownloadUrls:
             quality_options=[],
             content_type=ContentType.VIDEO,
         )
-        import asyncio
-        urls = asyncio.get_event_loop().run_until_complete(
-            self.extractor.get_download_urls(metadata)
-        )
+        urls = await self.extractor.get_download_urls(metadata)
         assert urls == ['https://example.com/best.mp4']
 
+    @pytest.mark.asyncio
     @patch.object(YtDlpExtractor, '_extract_info')
-    def test_get_download_urls_none_raises(self, mock_extract):
+    async def test_get_download_urls_none_raises(self, mock_extract):
         mock_extract.return_value = None
         metadata = VideoMetadata(
             url='https://www.youtube.com/watch?v=abc',
@@ -307,8 +363,5 @@ class TestYtDlpGetDownloadUrls:
             quality_options=[],
             content_type=ContentType.VIDEO,
         )
-        import asyncio
         with pytest.raises(PlatformError):
-            asyncio.get_event_loop().run_until_complete(
-                self.extractor.get_download_urls(metadata)
-            )
+            await self.extractor.get_download_urls(metadata)
