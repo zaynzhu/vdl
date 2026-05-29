@@ -57,7 +57,8 @@ def test_platform_manager_initialization_with_builtins():
     manager = PlatformManager(auto_register_builtins=True)
     
     assert manager is not None
-    assert manager.get_extractor_count() == 2  # bilibili, douyin
+    assert manager.get_extractor_count() == 3  # yt_dlp, bilibili, douyin
+    assert 'yt_dlp' in manager.list_platforms()
     assert 'bilibili' in manager.list_platforms()
     assert 'douyin' in manager.list_platforms()
 

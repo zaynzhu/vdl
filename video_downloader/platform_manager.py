@@ -31,13 +31,16 @@ class PlatformManager:
         logger.info("PlatformManager initialized")
     
     def _register_builtin_extractors(self):
-        """
-        Register built-in platform extractors.
-        """
+        """Register built-in platform extractors."""
+        from .extractors.yt_dlp import YtDlpExtractor
         from .extractors.bilibili import BilibiliExtractor
         from .extractors.douyin import DouyinExtractor
 
+        # YtDlpExtractor is the primary extractor (covers 6 platforms)
+        self.register_extractor(YtDlpExtractor())
+        # BilibiliExtractor is fallback for when yt-dlp Bilibili support lags
         self.register_extractor(BilibiliExtractor())
+        # DouyinExtractor has its own fallback chain
         self.register_extractor(DouyinExtractor())
     
     def register_extractor(self, extractor: PlatformExtractor) -> None:
