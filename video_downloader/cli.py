@@ -16,21 +16,27 @@ from .logger import logger, setup_logger
 def parse_args():
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
-        description='Download videos from Douyin, Bilibili, TikTok and more',
+        description='vdl - Multi-platform video downloader powered by yt-dlp',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Download a single video
-  python -m video_downloader.cli https://www.bilibili.com/video/BV1xx411c7mD
-  
-  # Download with custom output directory
-  python -m video_downloader.cli -o ./downloads https://www.douyin.com/video/123456
-  
+  # Download a video
+  vdl download https://www.bilibili.com/video/BV1xx411c7mD
+
+  # Download with quality and output dir
+  vdl download https://www.youtube.com/watch?v=xxx -q 1080p -o ./videos
+
   # Download multiple videos
-  python -m video_downloader.cli url1 url2 url3
-  
+  vdl download url1 url2 url3
+
   # Extract metadata only
-  python -m video_downloader.cli --metadata-only https://www.tiktok.com/@user/video/123
+  vdl info https://www.douyin.com/video/123456
+
+  # List supported platforms
+  vdl platforms
+
+  # Use cookies for authenticated download
+  vdl download https://www.bilibili.com/video/BV1xx --cookies ./cookies/bilibili.txt
         """
     )
     
@@ -197,6 +203,8 @@ async def main():
         print("\n📺 Supported Platforms:")
         for platform in platforms:
             print(f"  • {platform}")
+        print("\nPowered by yt-dlp (YouTube, Bilibili, Twitter, Instagram, TikTok)")
+        print("Douyin: yt-dlp → API → Playwright fallback chain")
         print()
         return 0
     
