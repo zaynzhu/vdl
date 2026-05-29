@@ -72,7 +72,7 @@ class MCPServer:
             "tools": [
                 {
                     "name": "download_video",
-                    "description": "下载视频（支持 Bilibili、Douyin、TikTok）",
+                    "description": "下载视频（支持 YouTube、Bilibili、Douyin、Twitter/X、Instagram 等多平台）",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
@@ -182,8 +182,8 @@ class MCPServer:
                         "type": "text",
                         "text": f"✅ 下载成功！\n\n"
                                 f"📁 文件路径: {result.file_path}\n"
-                                f"📊 文件大小: {result.file_size / 1024 / 1024:.2f} MB\n"
-                                f"⏱️  耗时: {result.duration:.2f} 秒"
+                                f"📊 文件大小: {result.file_size / 1024 / 1024:.2f} MB"
+                                + (f"\n⏱️  耗时: {result.duration:.1f}s" if result.duration > 0 else "")
                     }
                 ]
             }
@@ -211,9 +211,9 @@ class MCPServer:
         
         for result in batch_result.results:
             if result.success:
-                success_list.append(f"✓ {result.url}")
+                success_list.append(f"✓ {result.file_path}")
             else:
-                failed_list.append(f"✗ {result.url}: {result.error_message}")
+                failed_list.append(f"✗ {result.error_message}")
         
         text = f"📊 批量下载完成\n\n"
         text += f"✅ 成功: {batch_result.successful}\n"
@@ -278,14 +278,17 @@ class MCPServer:
         """列出支持的平台"""
         platforms = self.downloader.platform_manager.list_platforms()
         
-        text = "📺 支持的平台:\n\n"
+        text = "📺 Supported Platforms:\n\n"
         for platform in platforms:
             text += f"• {platform}\n"
-        
-        text += "\n支持的功能:\n"
-        text += "✅ Bilibili: 视频下载、多画质选择、Cookie 支持\n"
-        text += "✅ Douyin: 视频下载、图集下载\n"
-        text += "✅ TikTok: 视频下载\n"
+
+        text += "\nCoverage:\n"
+        text += "✅ YouTube: full support via yt-dlp\n"
+        text += "✅ Bilibili: full support via yt-dlp (fallback: custom extractor)\n"
+        text += "✅ Twitter/X: full support via yt-dlp\n"
+        text += "✅ Instagram: full support via yt-dlp\n"
+        text += "✅ TikTok: full support via yt-dlp\n"
+        text += "✅ Douyin: yt-dlp → API → Playwright fallback chain\n"
         
         return {
             "content": [
