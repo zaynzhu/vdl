@@ -189,7 +189,7 @@ class DownloadManager:
                     success=True,
                     file_path=output_path,
                     file_size=final_size,
-                    download_time=0.0  # TODO: track actual time
+                    duration=0.0  # TODO: track actual time
                 )
     
     def sanitize_filename(self, filename: str) -> str:
@@ -249,7 +249,9 @@ class DownloadManager:
         filename = template
         filename = filename.replace('{title}', metadata.title or 'untitled')
         filename = filename.replace('{author}', metadata.author or 'unknown')
-        filename = filename.replace('{id}', metadata.video_id or 'unknown')
+        # Extract video ID from URL as fallback
+        video_id = metadata.url.split('/')[-1].split('?')[0] if metadata.url else 'unknown'
+        filename = filename.replace('{id}', video_id)
         filename = filename.replace('{platform}', metadata.platform or 'unknown')
         
         # Format date
@@ -353,7 +355,7 @@ class DownloadManager:
                     DownloadResult(
                         success=False,
                         file_path=path,
-                        error_message=str(result)
+                        error=str(result)
                     )
                 )
             else:

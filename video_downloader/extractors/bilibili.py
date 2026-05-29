@@ -5,8 +5,9 @@ Bilibili platform extractor.
 import re
 import json
 import httpx
+from datetime import datetime
 from typing import List, Optional, Dict
-from ..models import VideoMetadata, QualityOption
+from ..models import VideoMetadata, QualityOption, ContentType
 from ..exceptions import PlatformError, VideoUnavailableError, ValidationError
 from ..logger import logger
 from .base import PlatformExtractor
@@ -70,7 +71,7 @@ class BilibiliExtractor(PlatformExtractor):
     async def extract_metadata(
         self,
         url: str,
-        cookies: Optional[Dict[str, str]] = None,
+        context=None,
         **kwargs,
     ) -> VideoMetadata:
         """
@@ -84,17 +85,23 @@ class BilibiliExtractor(PlatformExtractor):
             VideoMetadata
         """
         logger.info(f"Extracting metadata from: {url}")
-        
+
+        # Extract cookies dict from context
+        cookies = None
+        if context is not None:
+            now = datetime.now()
+            cookies = {c.name: c.value for c in context.cookies if not c.expires or c.expires > now}
+
         # Extract video ID
         video_id = self._extract_video_id(url)
         if not video_id:
             raise ValidationError(f"Invalid Bilibili URL: {url}")
-        
+
         # Handle short URL
         if url.startswith('https://b23.tv/'):
             url = await self._resolve_short_url(url)
             video_id = self._extract_video_id(url)
-        
+
         # Fetch video info
         video_info = await self._fetch_video_info(video_id, cookies)
         
@@ -108,37 +115,41 @@ class BilibiliExtractor(PlatformExtractor):
         self,
         metadata: VideoMetadata,
         quality: Optional[str] = None,
-        cookies: Optional[Dict[str, str]] = None,
         **kwargs,
     ) -> List[str]:
         """
         Get download URLs for video.
-        
+
         Args:
             metadata: Video metadata
             quality: Desired quality ID
-            cookies: Optional cookies for authentication
-            
+
         Returns:
             List of download URLs
         """
-        logger.info(f"Getting download URLs for: {metadata.video_id}")
-        
-        # Get video CID (content ID)
-        cid = metadata.extra_data.get('cid')
+        # Extract video ID from URL
+        video_id = self._extract_video_id(metadata.url) or 'unknown'
+        logger.info(f"Getting download URLs for: {video_id}")
+
+        # Get video CID from description or re-fetch
+        # CID is not stored in VideoMetadata, so we need to re-fetch video info
+        cookies = kwargs.get('cookies')
+        video_info = await self._fetch_video_info(video_id, cookies)
+        pages = video_info.get('pages', [])
+        cid = pages[0]['cid'] if pages else None
         if not cid:
             raise PlatformError("Missing CID in metadata")
-        
+
         # Determine quality
         if quality:
             quality_id = int(quality)
         else:
             # Default to 1080P
             quality_id = 80
-        
+
         # Fetch play URL
         play_data = await self._fetch_play_url(
-            metadata.video_id, cid, quality_id, cookies
+            video_id, cid, quality_id, cookies
         )
         
         # Extract download URLs
@@ -218,20 +229,16 @@ class BilibiliExtractor(PlatformExtractor):
         
         # Create metadata
         metadata = VideoMetadata(
+            url=f"https://www.bilibili.com/video/{video_id}",
             platform=self.PLATFORM_NAME,
-            video_id=video_id,
             title=title,
             author=author,
             description=description,
             duration=duration,
             thumbnail_url=thumbnail,
-            available_qualities=qualities,
-            extra_data={
-                'cid': cid,
-                'pages': pages,
-                'view_count': video_info.get('stat', {}).get('view', 0),
-                'like_count': video_info.get('stat', {}).get('like', 0),
-            }
+            upload_date=datetime.now(),
+            quality_options=qualities,
+            content_type=ContentType.VIDEO,
         )
         
         return metadata

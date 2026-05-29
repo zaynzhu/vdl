@@ -181,9 +181,17 @@ class DouyinExtractor(PlatformExtractor):
             logger.info(f"[douyin] Found {len(urls)} image URLs")
             return urls
 
-        # For video, re-extract to get a fresh play_addr URL
-        # The metadata doesn't store the direct download URL (it's ephemeral)
-        logger.warning("[douyin] Video download URLs require re-extraction")
+        # For video, re-extract via yt-dlp to get a fresh download URL
+        # (Douyin play_addr URLs are ephemeral)
+        from .yt_dlp import YtDlpExtractor
+        ytdlp = YtDlpExtractor()
+        try:
+            fresh_urls = await ytdlp.get_download_urls(metadata, quality)
+            if fresh_urls:
+                return fresh_urls
+        except Exception:
+            pass
+        logger.warning("[douyin] Could not get video download URL")
         return []
 
     # ------------------------------------------------------------------

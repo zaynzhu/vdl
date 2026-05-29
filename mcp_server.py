@@ -168,7 +168,7 @@ class MCPServer:
         filename_template = args.get("filename_template", "{title}")
         
         options = DownloadOptions(
-            output_dir=output_dir,
+            output_path=output_dir,
             quality=quality,
             filename_template=filename_template
         )
@@ -192,7 +192,7 @@ class MCPServer:
                 "content": [
                     {
                         "type": "text",
-                        "text": f"❌ 下载失败: {result.error_message}"
+                        "text": f"❌ 下载失败: {result.error}"
                     }
                 ],
                 "isError": True
@@ -203,7 +203,7 @@ class MCPServer:
         urls = args["urls"]
         output_dir = args.get("output_dir", "./downloads")
         
-        options = DownloadOptions(output_dir=output_dir)
+        options = DownloadOptions(output_path=output_dir)
         batch_result = await self.downloader.batch_download(urls, options)
         
         success_list = []
@@ -213,7 +213,7 @@ class MCPServer:
             if result.success:
                 success_list.append(f"✓ {result.file_path}")
             else:
-                failed_list.append(f"✗ {result.error_message}")
+                failed_list.append(f"✗ {result.error}")
         
         text = f"📊 批量下载完成\n\n"
         text += f"✅ 成功: {batch_result.successful}\n"
@@ -252,8 +252,8 @@ class MCPServer:
             if metadata.description:
                 text += f"描述: {metadata.description[:100]}...\n"
             
-            if metadata.available_qualities:
-                text += f"可用画质: {', '.join(metadata.available_qualities)}\n"
+            if metadata.quality_options:
+                text += f"可用画质: {', '.join(q.name for q in metadata.quality_options)}\n"
             
             return {
                 "content": [

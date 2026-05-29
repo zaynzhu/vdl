@@ -9,6 +9,7 @@ from .models import (
     DownloadResult,
     VideoMetadata,
     BatchResult,
+    ExtractionContext,
 )
 from .exceptions import (
     ValidationError,
@@ -129,12 +130,15 @@ class VideoDownloader:
             
             # Load cookies for platform
             cookies = self.cookie_store.load_cookies(platform)
-            cookie_dict = self.cookie_store.get_cookie_dict(cookies)
-            
+            context = ExtractionContext(
+                cookies=cookies,
+                fingerprint=self.fingerprint,
+            )
+
             # Extract metadata
             logger.info("Extracting metadata...")
             metadata = await extractor.extract_metadata(
-                url, cookie_dict,
+                url, context,
                 cookie_file=self.config.cookie_file,
                 proxy=self.config.proxy,
             )
@@ -154,7 +158,7 @@ class VideoDownloader:
                 raise DownloadError("No download URLs found")
             
             # Generate output filename
-            output_dir = options.output_dir or self.config.output_dir
+            output_dir = options.output_path or self.config.output_dir
             filename = self.download_manager.generate_filename(
                 options.filename_template or self.config.filename_template,
                 metadata,
@@ -210,13 +214,13 @@ class VideoDownloader:
             logger.error(f"Download failed: {e}")
             return DownloadResult(
                 success=False,
-                error_message=str(e)
+                error=str(e)
             )
         except Exception as e:
             logger.exception(f"Unexpected error during download: {e}")
             return DownloadResult(
                 success=False,
-                error_message=f"Unexpected error: {str(e)}"
+                error=f"Unexpected error: {str(e)}"
             )
     
     async def batch_download(
@@ -257,7 +261,7 @@ class VideoDownloader:
                 logger.error(f"Failed to download {url}: {e}")
                 results.append(DownloadResult(
                     success=False,
-                    error_message=str(e)
+                    error=str(e)
                 ))
                 failed += 1
         
@@ -296,11 +300,14 @@ class VideoDownloader:
         
         # Load cookies for platform
         cookies = self.cookie_store.load_cookies(platform)
-        cookie_dict = self.cookie_store.get_cookie_dict(cookies)
-        
+        context = ExtractionContext(
+            cookies=cookies,
+            fingerprint=self.fingerprint,
+        )
+
         # Extract metadata
         metadata = await extractor.extract_metadata(
-            url, cookie_dict,
+            url, context,
             cookie_file=self.config.cookie_file,
             proxy=self.config.proxy,
         )
@@ -318,16 +325,16 @@ class VideoDownloader:
         Returns:
             Quality ID or None
         """
-        if not metadata.available_qualities:
+        if not metadata.quality_options:
             return None
-        
+
         # Try to find 1080P or highest available
-        for quality in metadata.available_qualities:
+        for quality in metadata.quality_options:
             if '1080' in quality.name:
                 return quality.quality_id
-        
+
         # Return first (usually highest) quality
-        return metadata.available_qualities[0].quality_id
+        return metadata.quality_options[0].quality_id
     
     def list_supported_platforms(self) -> List[str]:
         """
