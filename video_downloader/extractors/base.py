@@ -36,40 +36,44 @@ class PlatformExtractor(ABC):
     def extract_metadata(
         self,
         url: str,
-        context: ExtractionContext
+        context: ExtractionContext,
+        **kwargs,
     ) -> VideoMetadata:
         """
         Extract video metadata from the URL.
-        
+
         Args:
             url: Video URL
             context: Extraction context with cookies, fingerprint, etc.
-            
+            **kwargs: Additional extractor-specific options (e.g. cookie_file, proxy)
+
         Returns:
             Video metadata
-            
+
         Raises:
             PlatformError: If extraction fails
             VideoUnavailableError: If video is not available
         """
         pass
-    
+
     @abstractmethod
     def get_download_urls(
         self,
         metadata: VideoMetadata,
-        quality: Optional[str] = None
+        quality: Optional[str] = None,
+        **kwargs,
     ) -> List[str]:
         """
         Get download URLs for the video.
-        
+
         Args:
             metadata: Video metadata
             quality: Desired quality (e.g., "1080p"). None for highest quality.
-            
+            **kwargs: Additional extractor-specific options (e.g. cookie_file, proxy)
+
         Returns:
             List of download URLs
-            
+
         Raises:
             PlatformError: If URL extraction fails
         """

@@ -70,7 +70,8 @@ class BilibiliExtractor(PlatformExtractor):
     async def extract_metadata(
         self,
         url: str,
-        cookies: Optional[Dict[str, str]] = None
+        cookies: Optional[Dict[str, str]] = None,
+        **kwargs,
     ) -> VideoMetadata:
         """
         Extract video metadata from Bilibili.
@@ -107,7 +108,8 @@ class BilibiliExtractor(PlatformExtractor):
         self,
         metadata: VideoMetadata,
         quality: Optional[str] = None,
-        cookies: Optional[Dict[str, str]] = None
+        cookies: Optional[Dict[str, str]] = None,
+        **kwargs,
     ) -> List[str]:
         """
         Get download URLs for video.

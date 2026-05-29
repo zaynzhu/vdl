@@ -133,14 +133,22 @@ class VideoDownloader:
             
             # Extract metadata
             logger.info("Extracting metadata...")
-            metadata = await extractor.extract_metadata(url, cookie_dict)
-            
+            metadata = await extractor.extract_metadata(
+                url, cookie_dict,
+                cookie_file=self.config.cookie_file,
+                proxy=self.config.proxy,
+            )
+
             # Determine quality
             quality = options.quality or self._select_default_quality(metadata)
-            
+
             # Get download URLs
             logger.info("Getting download URLs...")
-            download_urls = await extractor.get_download_urls(metadata, quality, cookie_dict)
+            download_urls = await extractor.get_download_urls(
+                metadata, quality,
+                cookie_file=self.config.cookie_file,
+                proxy=self.config.proxy,
+            )
             
             if not download_urls:
                 raise DownloadError("No download URLs found")
@@ -291,7 +299,11 @@ class VideoDownloader:
         cookie_dict = self.cookie_store.get_cookie_dict(cookies)
         
         # Extract metadata
-        metadata = await extractor.extract_metadata(url, cookie_dict)
+        metadata = await extractor.extract_metadata(
+            url, cookie_dict,
+            cookie_file=self.config.cookie_file,
+            proxy=self.config.proxy,
+        )
         
         logger.info(f"Metadata extracted: {metadata.title}")
         return metadata
