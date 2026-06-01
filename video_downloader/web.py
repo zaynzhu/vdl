@@ -364,7 +364,7 @@ def main():
     host = os.environ.get("VDL_HOST", "127.0.0.1")
     port = int(os.environ.get("VDL_PORT", "19002"))
 
-    print(f"\n  🎬 VDL Web UI")
+    print(f"\n  VDL Web UI")
     print(f"  http://{host}:{port}")
     print(f"  Press Ctrl+C to stop\n")
 
