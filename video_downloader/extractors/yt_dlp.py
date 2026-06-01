@@ -90,6 +90,7 @@ class YtDlpExtractor(PlatformExtractor):
         metadata: VideoMetadata,
         quality: Optional[str] = None,
         *,
+        context: Optional[ExtractionContext] = None,
         cookie_file: Optional[str] = None,
         proxy: Optional[str] = None,
     ) -> List[str]:
@@ -193,6 +194,7 @@ class YtDlpExtractor(PlatformExtractor):
         return VideoMetadata(
             url=info.get('webpage_url', ''),
             platform=platform,
+            video_id=info.get('id') or None,
             title=info.get('title', 'Untitled'),
             author=info.get('uploader') or info.get('channel') or 'Unknown',
             duration=info.get('duration') or 0,

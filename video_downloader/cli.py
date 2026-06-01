@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional
 from .core import VideoDownloader
 from .config import DownloaderConfig
-from .models import DownloadOptions
+from .models import DownloadOptions, ContentType
 from .logger import logger, setup_logger
 
 
@@ -120,7 +120,7 @@ async def download_video(downloader: VideoDownloader, url: str, options: Downloa
                 size_mb = result.file_size / (1024 * 1024)
                 print(f"   Size: {size_mb:.2f} MB")
         else:
-            print(f"❌ Failed: {result.error_message}")
+            print(f"❌ Failed: {result.error}")
             return False
         
         return True
@@ -142,7 +142,7 @@ async def extract_metadata_only(downloader: VideoDownloader, url: str):
         print(f"Title:    {metadata.title}")
         print(f"Author:   {metadata.author}")
         print(f"Platform: {metadata.platform}")
-        print(f"ID:       {metadata.video_id}")
+        print(f"URL:      {metadata.url}")
         
         if metadata.duration:
             minutes = metadata.duration // 60
@@ -155,14 +155,13 @@ async def extract_metadata_only(downloader: VideoDownloader, url: str):
                 desc += "..."
             print(f"Description: {desc}")
         
-        if metadata.available_qualities:
-            qualities = ", ".join(q.name for q in metadata.available_qualities)
+        if metadata.quality_options:
+            qualities = ", ".join(q.name for q in metadata.quality_options)
             print(f"Qualities: {qualities}")
-        
+
         # Check if it's an image gallery
-        is_gallery = metadata.extra_data.get('is_gallery', False)
-        if is_gallery:
-            images = metadata.extra_data.get('images', [])
+        if metadata.content_type == ContentType.GALLERY:
+            images = metadata.gallery_images or []
             print(f"Type: Image Gallery ({len(images)} images)")
         
         print(f"{'='*60}\n")
@@ -216,7 +215,7 @@ async def main():
     
     # Create download options
     options = DownloadOptions(
-        output_dir=args.output_dir,
+        output_path=args.output_dir,
         filename_template=args.filename_template,
         quality=args.quality
     )

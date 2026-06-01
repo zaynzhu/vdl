@@ -78,10 +78,50 @@ def test_list_supported_platforms():
 async def test_batch_download_empty_list():
     """Test batch download with empty URL list."""
     downloader = VideoDownloader()
-    
+
     result = await downloader.batch_download([])
-    
+
     assert result.total == 0
     assert result.successful == 0
     assert result.failed == 0
     assert len(result.results) == 0
+
+
+# --- Fingerprint type test ---
+
+def test_fingerprint_is_generator_not_dataclass():
+    """self.fingerprint_gen must be BrowserFingerprint (factory), not Fingerprint (dataclass)."""
+    from video_downloader.browser_fingerprint import BrowserFingerprint
+    downloader = VideoDownloader()
+    assert isinstance(downloader.fingerprint_gen, BrowserFingerprint)
+
+
+def test_fingerprint_gen_has_generate_method():
+    """BrowserFingerprint must have generate_fingerprint that returns a Fingerprint."""
+    from video_downloader.models import Fingerprint
+    downloader = VideoDownloader()
+    fp = downloader.fingerprint_gen.generate_fingerprint('douyin')
+    assert isinstance(fp, Fingerprint)
+    assert fp.user_agent  # must have user_agent attribute
+    assert fp.platform
+
+
+def test_context_receives_fingerprint_dataclass():
+    """ExtractionContext.fingerprint must be a Fingerprint dataclass, not BrowserFingerprint."""
+    from video_downloader.models import ExtractionContext, Fingerprint
+    from video_downloader.browser_fingerprint import BrowserFingerprint
+    downloader = VideoDownloader()
+    fp = downloader.fingerprint_gen.generate_fingerprint('bilibili')
+    ctx = ExtractionContext(cookies=[], fingerprint=fp)
+    assert isinstance(ctx.fingerprint, Fingerprint)
+    assert hasattr(ctx.fingerprint, 'user_agent')
+    assert ctx.fingerprint.user_agent  # not a method, a value
+
+
+# --- Config ffmpeg_path test ---
+
+def test_config_has_ffmpeg_path():
+    """DownloaderConfig should have ffmpeg_path field."""
+    config = DownloaderConfig()
+    assert hasattr(config, 'ffmpeg_path')
+    assert config.ffmpeg_path == 'ffmpeg'

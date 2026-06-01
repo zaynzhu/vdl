@@ -90,7 +90,8 @@ class BilibiliExtractor(PlatformExtractor):
         cookies = None
         if context is not None:
             now = datetime.now()
-            cookies = {c.name: c.value for c in context.cookies if not c.expires or c.expires > now}
+            cookies = {c.name: c.value for c in context.cookies
+                       if c.expires is None or c.expires > now}
 
         # Extract video ID
         video_id = self._extract_video_id(url)
@@ -115,6 +116,8 @@ class BilibiliExtractor(PlatformExtractor):
         self,
         metadata: VideoMetadata,
         quality: Optional[str] = None,
+        *,
+        context=None,
         **kwargs,
     ) -> List[str]:
         """
@@ -123,17 +126,28 @@ class BilibiliExtractor(PlatformExtractor):
         Args:
             metadata: Video metadata
             quality: Desired quality ID
+            context: ExtractionContext with cookies
 
         Returns:
             List of download URLs
         """
         # Extract video ID from URL
-        video_id = self._extract_video_id(metadata.url) or 'unknown'
+        video_id = metadata.video_id or self._extract_video_id(metadata.url)
+        if not video_id:
+            raise ValidationError(f"Invalid Bilibili URL: {metadata.url}")
         logger.info(f"Getting download URLs for: {video_id}")
 
-        # Get video CID from description or re-fetch
+        # Extract cookies from context (same pattern as extract_metadata)
+        cookies = None
+        if context is not None:
+            now = datetime.now()
+            cookies = {c.name: c.value for c in context.cookies
+                       if c.expires is None or c.expires > now}
+        elif 'cookies' in kwargs:
+            cookies = kwargs['cookies']
+
         # CID is not stored in VideoMetadata, so we need to re-fetch video info
-        cookies = kwargs.get('cookies')
+        # TODO: cache CID from extract_metadata to avoid redundant API call
         video_info = await self._fetch_video_info(video_id, cookies)
         pages = video_info.get('pages', [])
         cid = pages[0]['cid'] if pages else None
@@ -227,16 +241,26 @@ class BilibiliExtractor(PlatformExtractor):
         # Get available qualities
         qualities = self._get_available_qualities(video_info)
         
+        # Parse upload date from API pubdate/ctime (Unix timestamp)
+        upload_date = datetime.now()
+        pubdate = video_info.get('pubdate') or video_info.get('ctime')
+        if pubdate:
+            try:
+                upload_date = datetime.fromtimestamp(pubdate)
+            except (OSError, ValueError):
+                pass
+
         # Create metadata
         metadata = VideoMetadata(
             url=f"https://www.bilibili.com/video/{video_id}",
             platform=self.PLATFORM_NAME,
+            video_id=video_id,
             title=title,
             author=author,
             description=description,
             duration=duration,
             thumbnail_url=thumbnail,
-            upload_date=datetime.now(),
+            upload_date=upload_date,
             quality_options=qualities,
             content_type=ContentType.VIDEO,
         )

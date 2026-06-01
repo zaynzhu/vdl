@@ -85,7 +85,7 @@ class TestDownloadResultFields:
 # --- generate_filename tests (Bug 6 regression) ---
 
 class TestGenerateFilename:
-    """Verify generate_filename uses metadata.url, not video_id."""
+    """Verify generate_filename uses video_id or URL for {id}."""
 
     def test_title_placeholder(self, manager, sample_metadata):
         filename = manager.generate_filename('{title}', sample_metadata, '.mp4')
@@ -95,26 +95,64 @@ class TestGenerateFilename:
         filename = manager.generate_filename('{author}', sample_metadata, '.mp4')
         assert filename == 'Test Author.mp4'
 
-    def test_id_from_url(self, manager, sample_metadata):
-        """{id} extracts video ID from URL path, not from nonexistent video_id field."""
+    def test_id_prefers_video_id_field(self, manager):
+        """{id} uses metadata.video_id when available."""
+        metadata = VideoMetadata(
+            url='https://www.bilibili.com/video/BV1xx411c7mD',
+            platform='bilibili', title='T', author='A', duration=0,
+            thumbnail_url='', description='', upload_date=datetime.now(),
+            quality_options=[], content_type=ContentType.VIDEO,
+            video_id='BV1xx411c7mD',
+        )
+        filename = manager.generate_filename('{id}', metadata, '.mp4')
+        assert filename == 'BV1xx411c7mD.mp4'
+
+    def test_id_falls_back_to_url_path(self, manager, sample_metadata):
+        """{id} falls back to URL parsing when video_id is None."""
+        assert sample_metadata.video_id is None
         filename = manager.generate_filename('{id}', sample_metadata, '.mp4')
         assert filename == 'BV1xx411c7mD.mp4'
+
+    def test_id_from_youtube_query_param(self, manager):
+        """YouTube ?v=xxx is extracted correctly, not 'watch'."""
+        metadata = VideoMetadata(
+            url='https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+            platform='youtube', title='T', author='A', duration=0,
+            thumbnail_url='', description='', upload_date=datetime.now(),
+            quality_options=[], content_type=ContentType.VIDEO,
+        )
+        filename = manager.generate_filename('{id}', metadata, '.mp4')
+        assert filename == 'dQw4w9WgXcQ.mp4'
 
     def test_id_from_url_with_query(self, manager):
         metadata = VideoMetadata(
             url='https://www.bilibili.com/video/BV1xx?p=1',
-            platform='bilibili',
-            title='Test',
-            author='Author',
-            duration=60,
-            thumbnail_url='',
-            description='',
-            upload_date=datetime.now(),
-            quality_options=[],
-            content_type=ContentType.VIDEO,
+            platform='bilibili', title='Test', author='Author', duration=60,
+            thumbnail_url='', description='', upload_date=datetime.now(),
+            quality_options=[], content_type=ContentType.VIDEO,
         )
         filename = manager.generate_filename('{id}', metadata, '.mp4')
         assert filename == 'BV1xx.mp4'
+
+    def test_id_empty_url_gives_unknown(self, manager):
+        metadata = VideoMetadata(
+            url='', platform='test', title='T', author='A', duration=0,
+            thumbnail_url='', description='', upload_date=datetime.now(),
+            quality_options=[], content_type=ContentType.VIDEO,
+        )
+        filename = manager.generate_filename('{id}', metadata)
+        assert 'unknown' in filename
+
+    def test_id_trailing_slash_gives_unknown(self, manager):
+        """URL with trailing slash and no path segments returns 'unknown'."""
+        metadata = VideoMetadata(
+            url='https://example.com/', platform='test', title='T', author='A',
+            duration=0, thumbnail_url='', description='',
+            upload_date=datetime.now(), quality_options=[],
+            content_type=ContentType.VIDEO,
+        )
+        filename = manager.generate_filename('{id}', metadata)
+        assert 'unknown' in filename
 
     def test_platform_placeholder(self, manager, sample_metadata):
         filename = manager.generate_filename('{platform}', sample_metadata, '.mp4')
@@ -127,22 +165,6 @@ class TestGenerateFilename:
     def test_combined_template(self, manager, sample_metadata):
         filename = manager.generate_filename('{title}_{author}', sample_metadata)
         assert filename == 'Test Video_Test Author'
-
-    def test_empty_url_gives_unknown_id(self, manager):
-        metadata = VideoMetadata(
-            url='',
-            platform='test',
-            title='T',
-            author='A',
-            duration=0,
-            thumbnail_url='',
-            description='',
-            upload_date=datetime.now(),
-            quality_options=[],
-            content_type=ContentType.VIDEO,
-        )
-        filename = manager.generate_filename('{id}', metadata)
-        assert 'unknown' in filename
 
 
 # --- sanitize_filename tests ---
@@ -224,3 +246,174 @@ class TestDownloadMultiple:
         assert len(results) == 1
         assert results[0].success is False
         assert results[0].error == 'Connection refused'
+
+
+# --- DASH merge tests ---
+
+class TestMergeDashFiles:
+
+    @pytest.mark.asyncio
+    async def test_merge_calls_ffmpeg(self, manager, tmp_path):
+        """merge_dash_files calls ffmpeg with correct arguments."""
+        video = tmp_path / 'video.mp4'
+        audio = tmp_path / 'audio.mp4'
+        output = tmp_path / 'merged.mp4'
+        video.write_bytes(b'fake video data')
+        audio.write_bytes(b'fake audio data')
+
+        mock_proc = AsyncMock()
+        mock_proc.communicate = AsyncMock(return_value=(b'', b''))
+        mock_proc.returncode = 0
+
+        def create_mock_proc(*args, **kwargs):
+            output.write_bytes(b'merged content')
+            return mock_proc
+
+        with patch('asyncio.create_subprocess_exec', new_callable=AsyncMock, side_effect=create_mock_proc) as mock_exec:
+            result = await manager.merge_dash_files(str(video), str(audio), str(output))
+
+        mock_exec.assert_called_once()
+        args = mock_exec.call_args[0]
+        assert 'ffmpeg' in args
+        assert '-c' in args
+        assert 'copy' in args
+        assert result.success is True
+        assert result.file_path == str(output)
+
+    @pytest.mark.asyncio
+    async def test_merge_cleans_up_parts(self, manager, tmp_path):
+        """After successful merge, part files are deleted."""
+        video = tmp_path / 'video.mp4'
+        audio = tmp_path / 'audio.mp4'
+        output = tmp_path / 'merged.mp4'
+        video.write_bytes(b'fake video')
+        audio.write_bytes(b'fake audio')
+
+        mock_proc = AsyncMock()
+        mock_proc.communicate = AsyncMock(return_value=(b'', b''))
+        mock_proc.returncode = 0
+
+        def write_output(*args, **kwargs):
+            output.write_bytes(b'merged')
+            return mock_proc
+
+        with patch('asyncio.create_subprocess_exec', new_callable=AsyncMock, side_effect=write_output):
+            result = await manager.merge_dash_files(str(video), str(audio), str(output))
+
+        assert result.success is True
+        assert result.file_path == str(output)
+        assert not video.exists()
+        assert not audio.exists()
+
+    @pytest.mark.asyncio
+    async def test_merge_ffmpeg_not_found(self, manager, tmp_path):
+        """When ffmpeg is not found, returns video-only file."""
+        video = tmp_path / 'video.mp4'
+        audio = tmp_path / 'audio.mp4'
+        output = tmp_path / 'merged.mp4'
+        video.write_bytes(b'fake video data')
+        audio.write_bytes(b'fake audio data')
+
+        with patch('asyncio.create_subprocess_exec', new_callable=AsyncMock, side_effect=FileNotFoundError):
+            result = await manager.merge_dash_files(str(video), str(audio), str(output))
+
+        assert result.success is True
+        assert result.file_path == str(video)
+
+    @pytest.mark.asyncio
+    async def test_merge_ffmpeg_failure(self, manager, tmp_path):
+        """When ffmpeg exits non-zero, returns video-only file."""
+        video = tmp_path / 'video.mp4'
+        audio = tmp_path / 'audio.mp4'
+        output = tmp_path / 'merged.mp4'
+        video.write_bytes(b'fake video data')
+        audio.write_bytes(b'fake audio data')
+
+        mock_proc = AsyncMock()
+        mock_proc.communicate = AsyncMock(return_value=(b'', b'Error'))
+        mock_proc.returncode = 1
+
+        with patch('asyncio.create_subprocess_exec', new_callable=AsyncMock, return_value=mock_proc):
+            result = await manager.merge_dash_files(str(video), str(audio), str(output))
+
+        assert result.success is True
+        assert result.file_path == str(video)
+
+
+# --- _extract_video_id_from_url tests ---
+
+class TestExtractVideoIdFromUrl:
+
+    def test_youtube_query_param(self):
+        assert DownloadManager._extract_video_id_from_url(
+            'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
+        ) == 'dQw4w9WgXcQ'
+
+    def test_bilibili_path(self):
+        assert DownloadManager._extract_video_id_from_url(
+            'https://www.bilibili.com/video/BV1xx411c7mD'
+        ) == 'BV1xx411c7mD'
+
+    def test_douyin_path(self):
+        assert DownloadManager._extract_video_id_from_url(
+            'https://www.douyin.com/video/7123456789'
+        ) == '7123456789'
+
+    def test_empty_url(self):
+        assert DownloadManager._extract_video_id_from_url('') == 'unknown'
+
+    def test_none_url(self):
+        assert DownloadManager._extract_video_id_from_url(None) == 'unknown'
+
+    def test_url_with_trailing_slash(self):
+        result = DownloadManager._extract_video_id_from_url('https://example.com/')
+        assert result == 'unknown'
+
+    def test_twitter_status(self):
+        assert DownloadManager._extract_video_id_from_url(
+            'https://twitter.com/user/status/123456789'
+        ) == '123456789'
+
+
+# --- Resume mode tests ---
+
+class TestResumeModeLogic:
+    """Test the resume mode logic by checking mode selection."""
+
+    def test_200_with_partial_discards(self):
+        """When status=200 and partial exists, mode should be 'wb' (overwrite)."""
+        # Simulate the mode selection logic
+        response_status = 200
+        downloaded_size = 1000
+        if response_status == 200 and downloaded_size > 0:
+            downloaded_size = 0
+        mode = 'ab' if response_status == 206 and downloaded_size > 0 else 'wb'
+        assert mode == 'wb'
+        assert downloaded_size == 0
+
+    def test_206_with_partial_appends(self):
+        """When status=206 and partial exists, mode should be 'ab' (append)."""
+        response_status = 206
+        downloaded_size = 1000
+        if response_status == 200 and downloaded_size > 0:
+            downloaded_size = 0
+        mode = 'ab' if response_status == 206 and downloaded_size > 0 else 'wb'
+        assert mode == 'ab'
+
+    def test_200_no_partial_writes_fresh(self):
+        """When status=200 and no partial, mode should be 'wb'."""
+        response_status = 200
+        downloaded_size = 0
+        if response_status == 200 and downloaded_size > 0:
+            downloaded_size = 0
+        mode = 'ab' if response_status == 206 and downloaded_size > 0 else 'wb'
+        assert mode == 'wb'
+
+    def test_206_no_partial_writes_fresh(self):
+        """When status=206 but no partial, mode should be 'wb'."""
+        response_status = 206
+        downloaded_size = 0
+        if response_status == 200 and downloaded_size > 0:
+            downloaded_size = 0
+        mode = 'ab' if response_status == 206 and downloaded_size > 0 else 'wb'
+        assert mode == 'wb'

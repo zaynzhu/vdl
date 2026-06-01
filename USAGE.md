@@ -119,7 +119,7 @@ async def main():
 
     # With options
     options = DownloadOptions(
-        output_dir="./downloads",
+        output_path="./downloads",
         quality="1080p",
     )
     result = await downloader.download("https://www.youtube.com/watch?v=xxx", options)
@@ -127,7 +127,7 @@ async def main():
     if result.success:
         print(f"Saved to: {result.file_path}")
     else:
-        print(f"Failed: {result.error_message}")
+        print(f"Failed: {result.error}")
 
     # Extract metadata only
     metadata = await downloader.extract_metadata("https://www.douyin.com/video/123")

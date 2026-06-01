@@ -106,7 +106,75 @@ class DownloadManager:
         
         # Should not reach here
         raise DownloadError("Download failed")
-    
+
+    async def merge_dash_files(
+        self,
+        video_path: str,
+        audio_path: str,
+        output_path: str,
+    ) -> DownloadResult:
+        """Merge DASH video and audio streams using ffmpeg.
+
+        Args:
+            video_path: Path to downloaded video stream
+            audio_path: Path to downloaded audio stream
+            output_path: Desired output file path
+
+        Returns:
+            DownloadResult with the merged file, or the video-only file on failure
+        """
+        ffmpeg = self.config.ffmpeg_path
+        logger.info(f"Merging DASH streams: {video_path} + {audio_path}")
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                ffmpeg, "-y",
+                "-i", video_path,
+                "-i", audio_path,
+                "-c", "copy",
+                output_path,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            _, stderr = await proc.communicate()
+
+            if proc.returncode != 0:
+                logger.warning(f"ffmpeg merge failed (exit {proc.returncode}): {stderr.decode()[:200]}")
+                # Fall back to video-only file
+                return DownloadResult(
+                    success=True,
+                    file_path=video_path,
+                    file_size=os.path.getsize(video_path),
+                )
+
+            # Clean up part files
+            for part in (video_path, audio_path):
+                if os.path.exists(part) and part != output_path:
+                    os.remove(part)
+
+            final_size = os.path.getsize(output_path)
+            logger.info(f"DASH merge complete: {output_path} ({final_size} bytes)")
+            return DownloadResult(
+                success=True,
+                file_path=output_path,
+                file_size=final_size,
+            )
+
+        except FileNotFoundError:
+            logger.warning(f"ffmpeg not found at '{ffmpeg}', keeping separate streams")
+            return DownloadResult(
+                success=True,
+                file_path=video_path,
+                file_size=os.path.getsize(video_path),
+            )
+        except Exception as e:
+            logger.warning(f"DASH merge error: {e}, keeping video-only file")
+            return DownloadResult(
+                success=True,
+                file_path=video_path,
+                file_size=os.path.getsize(video_path),
+            )
+
     async def _download_with_resume(
         self,
         url: str,
@@ -166,11 +234,15 @@ class DownloadManager:
                         total_size += downloaded_size
                 else:
                     total_size = 0
-                
+
                 logger.debug(f"Total size: {total_size} bytes")
-                
-                # Open file for writing (append if resuming)
-                mode = 'ab' if downloaded_size > 0 else 'wb'
+
+                # If server returned 200 instead of 206, discard partial file
+                if response.status == 200 and downloaded_size > 0:
+                    downloaded_size = 0
+
+                # Open file for writing (append if resuming partial content)
+                mode = 'ab' if response.status == 206 and downloaded_size > 0 else 'wb'
                 with open(output_path, mode) as f:
                     chunk_size = 8192
                     current_size = downloaded_size
@@ -249,8 +321,8 @@ class DownloadManager:
         filename = template
         filename = filename.replace('{title}', metadata.title or 'untitled')
         filename = filename.replace('{author}', metadata.author or 'unknown')
-        # Extract video ID from URL as fallback
-        video_id = metadata.url.split('/')[-1].split('?')[0] if metadata.url else 'unknown'
+        # Extract video ID: prefer extractor-provided, fallback to URL parsing
+        video_id = metadata.video_id or self._extract_video_id_from_url(metadata.url)
         filename = filename.replace('{id}', video_id)
         filename = filename.replace('{platform}', metadata.platform or 'unknown')
         
@@ -269,7 +341,33 @@ class DownloadManager:
         
         # Sanitize the result
         return self.sanitize_filename(filename)
-    
+
+    @staticmethod
+    def _extract_video_id_from_url(url: str) -> str:
+        """Extract a meaningful video ID from a URL.
+
+        Handles YouTube query params (v=xxx), Bilibili/Douyin path segments,
+        and generic URLs. Returns 'unknown' as fallback.
+        """
+        if not url:
+            return 'unknown'
+
+        from urllib.parse import urlparse, parse_qs
+
+        parsed = urlparse(url)
+
+        # YouTube-style: ?v=VIDEO_ID
+        qs = parse_qs(parsed.query)
+        if 'v' in qs:
+            return qs['v'][0]
+
+        # Path-based: take last non-empty segment
+        segments = [s for s in parsed.path.split('/') if s]
+        if segments:
+            return segments[-1]
+
+        return 'unknown'
+
     def resolve_output_path(
         self,
         base_path: str,

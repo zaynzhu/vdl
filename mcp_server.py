@@ -213,7 +213,7 @@ class MCPServer:
             if result.success:
                 success_list.append(f"✓ {result.file_path}")
             else:
-                failed_list.append(f"✗ {result.error}")
+                failed_list.append(f"✗ {result.file_path or 'unknown'}: {result.error}")
         
         text = f"📊 批量下载完成\n\n"
         text += f"✅ 成功: {batch_result.successful}\n"

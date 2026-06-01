@@ -34,6 +34,7 @@ class DownloaderConfig:
     # Download configuration
     chunk_size: int = 1024 * 1024  # 1MB
     enable_resume: bool = True
+    ffmpeg_path: str = "ffmpeg"
     
     # Extension configuration
     custom_extractors: List[Type] = field(default_factory=list)

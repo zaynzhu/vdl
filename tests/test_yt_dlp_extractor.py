@@ -118,6 +118,29 @@ class TestYtDlpMetadataMapping:
         assert metadata.platform == 'youtube'
         assert metadata.content_type == ContentType.VIDEO
 
+    def test_map_video_id(self):
+        """_map_metadata should populate video_id from yt-dlp 'id' field."""
+        ytdlp_info = {
+            'title': 'Test',
+            'webpage_url': 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+            'extractor': 'youtube',
+            'id': 'dQw4w9WgXcQ',
+            'formats': [],
+        }
+        metadata = self.extractor._map_metadata(ytdlp_info)
+        assert metadata.video_id == 'dQw4w9WgXcQ'
+
+    def test_map_video_id_missing(self):
+        """_map_metadata should set video_id=None when yt-dlp has no 'id'."""
+        ytdlp_info = {
+            'title': 'Test',
+            'webpage_url': 'https://example.com/video',
+            'extractor': 'generic',
+            'formats': [],
+        }
+        metadata = self.extractor._map_metadata(ytdlp_info)
+        assert metadata.video_id is None
+
     def test_map_missing_fields_use_defaults(self):
         ytdlp_info = {
             'title': 'Minimal',
@@ -365,3 +388,10 @@ class TestYtDlpGetDownloadUrls:
         )
         with pytest.raises(PlatformError):
             await self.extractor.get_download_urls(metadata)
+
+    @pytest.mark.asyncio
+    async def test_get_download_urls_accepts_context(self):
+        """get_download_urls should accept context keyword arg."""
+        import inspect
+        sig = inspect.signature(self.extractor.get_download_urls)
+        assert 'context' in sig.parameters

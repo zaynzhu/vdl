@@ -61,6 +61,8 @@ class PlatformExtractor(ABC):
         self,
         metadata: VideoMetadata,
         quality: Optional[str] = None,
+        *,
+        context: Optional[ExtractionContext] = None,
         **kwargs,
     ) -> List[str]:
         """
@@ -69,6 +71,7 @@ class PlatformExtractor(ABC):
         Args:
             metadata: Video metadata
             quality: Desired quality (e.g., "1080p"). None for highest quality.
+            context: Extraction context with cookies, fingerprint, etc.
             **kwargs: Additional extractor-specific options (e.g. cookie_file, proxy)
 
         Returns:

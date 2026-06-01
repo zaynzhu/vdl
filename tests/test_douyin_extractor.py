@@ -409,3 +409,126 @@ class TestDouyinInterfaceCompliance:
 
     def test_validate_url_empty(self):
         assert self.extractor.validate_url("") is False
+
+
+# ---------------------------------------------------------------------------
+# TestDouyinGetDownloadUrls — context parameter and error handling
+# ---------------------------------------------------------------------------
+
+class TestDouyinGetDownloadUrls:
+    """Test get_download_urls context parameter and error logging."""
+
+    @pytest.mark.asyncio
+    async def test_accepts_context_keyword(self, extractor):
+        """get_download_urls should accept context as keyword-only arg."""
+        import inspect
+        sig = inspect.signature(extractor.get_download_urls)
+        assert 'context' in sig.parameters
+
+    @pytest.mark.asyncio
+    async def test_gallery_returns_image_urls(self, extractor, context):
+        """Gallery content returns image URLs directly."""
+        metadata = VideoMetadata(
+            url='https://www.douyin.com/note/123',
+            platform='douyin', title='Gallery', author='A', duration=0,
+            thumbnail_url='', description='', upload_date=datetime.now(),
+            quality_options=[], content_type=ContentType.GALLERY,
+            video_id='123',
+            gallery_images=[
+                ImageItem(url='http://img1.jpg', index=0),
+                ImageItem(url='http://img2.jpg', index=1),
+            ],
+        )
+        urls = await extractor.get_download_urls(metadata, context=context)
+        assert urls == ['http://img1.jpg', 'http://img2.jpg']
+
+    @pytest.mark.asyncio
+    async def test_video_delegates_to_ytdlp(self, extractor, context):
+        """Video content delegates to YtDlpExtractor for fresh URLs."""
+        metadata = VideoMetadata(
+            url='https://www.douyin.com/video/7123456789',
+            platform='douyin', title='Video', author='A', duration=10,
+            thumbnail_url='', description='', upload_date=datetime.now(),
+            quality_options=[], content_type=ContentType.VIDEO,
+            video_id='7123456789',
+        )
+        mock_ytdlp = AsyncMock()
+        mock_ytdlp.get_download_urls.return_value = ['http://example.com/video.mp4']
+
+        with patch('video_downloader.extractors.yt_dlp.YtDlpExtractor', return_value=mock_ytdlp):
+            urls = await extractor.get_download_urls(metadata, context=context)
+
+        assert urls == ['http://example.com/video.mp4']
+
+    @pytest.mark.asyncio
+    async def test_video_ytdlp_failure_logs_warning(self, extractor, context, caplog):
+        """When yt-dlp fails, the error should be logged (not silently swallowed)."""
+        metadata = VideoMetadata(
+            url='https://www.douyin.com/video/7123456789',
+            platform='douyin', title='Video', author='A', duration=10,
+            thumbnail_url='', description='', upload_date=datetime.now(),
+            quality_options=[], content_type=ContentType.VIDEO,
+            video_id='7123456789',
+        )
+        mock_ytdlp = AsyncMock()
+        mock_ytdlp.get_download_urls.side_effect = Exception('yt-dlp signature error')
+
+        import logging
+        with caplog.at_level(logging.WARNING):
+            with patch('video_downloader.extractors.yt_dlp.YtDlpExtractor', return_value=mock_ytdlp):
+                urls = await extractor.get_download_urls(metadata, context=context)
+
+        assert urls == []
+        assert 'yt-dlp signature error' in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_video_forwards_cookie_file_to_ytdlp(self, extractor, context):
+        """cookie_file from kwargs should be forwarded to YtDlpExtractor."""
+        metadata = VideoMetadata(
+            url='https://www.douyin.com/video/7123456789',
+            platform='douyin', title='Video', author='A', duration=10,
+            thumbnail_url='', description='', upload_date=datetime.now(),
+            quality_options=[], content_type=ContentType.VIDEO,
+            video_id='7123456789',
+        )
+        mock_ytdlp = AsyncMock()
+        mock_ytdlp.get_download_urls.return_value = ['http://example.com/v.mp4']
+
+        with patch('video_downloader.extractors.yt_dlp.YtDlpExtractor', return_value=mock_ytdlp):
+            await extractor.get_download_urls(
+                metadata, context=context,
+                cookie_file='/path/to/cookies.txt', proxy='http://proxy:8080',
+            )
+
+        mock_ytdlp.get_download_urls.assert_called_once()
+        call_kwargs = mock_ytdlp.get_download_urls.call_args
+        assert call_kwargs[1].get('cookie_file') == '/path/to/cookies.txt'
+        assert call_kwargs[1].get('proxy') == 'http://proxy:8080'
+
+
+# ---------------------------------------------------------------------------
+# TestDouyinParseAwemeData — video_id population
+# ---------------------------------------------------------------------------
+
+class TestDouyinParseAwemeData:
+    """Test _parse_aweme_data populates video_id."""
+
+    def test_video_populates_video_id(self, extractor):
+        aweme = {
+            'desc': 'Test video',
+            'author': {'nickname': 'User'},
+            'aweme_type': 0,
+            'video': {'duration': 5000, 'cover': {'url_list': ['http://thumb.jpg']}},
+        }
+        metadata = extractor._parse_aweme_data(aweme, '7123456789')
+        assert metadata.video_id == '7123456789'
+
+    def test_gallery_populates_video_id(self, extractor):
+        aweme = {
+            'desc': 'Test gallery',
+            'author': {'nickname': 'User'},
+            'aweme_type': 68,
+            'images': [{'url_list': ['http://img.jpg'], 'width': 100, 'height': 100}],
+        }
+        metadata = extractor._parse_aweme_data(aweme, '9876543210')
+        assert metadata.video_id == '9876543210'

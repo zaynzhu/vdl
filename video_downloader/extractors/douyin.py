@@ -162,6 +162,8 @@ class DouyinExtractor(PlatformExtractor):
         self,
         metadata: VideoMetadata,
         quality: Optional[str] = None,
+        *,
+        context: Optional[ExtractionContext] = None,
         **kwargs,
     ) -> List[str]:
         """
@@ -186,11 +188,15 @@ class DouyinExtractor(PlatformExtractor):
         from .yt_dlp import YtDlpExtractor
         ytdlp = YtDlpExtractor()
         try:
-            fresh_urls = await ytdlp.get_download_urls(metadata, quality)
+            fresh_urls = await ytdlp.get_download_urls(
+                metadata, quality,
+                cookie_file=kwargs.get('cookie_file'),
+                proxy=kwargs.get('proxy'),
+            )
             if fresh_urls:
                 return fresh_urls
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[douyin] yt-dlp download URL extraction failed: {e}")
         logger.warning("[douyin] Could not get video download URL")
         return []
 
@@ -416,6 +422,7 @@ class DouyinExtractor(PlatformExtractor):
             if not is_gallery
             else f"https://www.douyin.com/note/{aweme_id}",
             platform=self.PLATFORM_NAME,
+            video_id=aweme_id,
             title=title,
             author=author,
             duration=duration,

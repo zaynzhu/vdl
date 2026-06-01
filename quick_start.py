@@ -25,7 +25,7 @@ async def example_1_simple_download():
         print(f"✅ 下载成功！")
         print(f"📁 文件路径: {result.file_path}")
     else:
-        print(f"❌ 下载失败: {result.error_message}")
+        print(f"❌ 下载失败: {result.error}")
 
 
 async def example_2_custom_options():
@@ -38,7 +38,7 @@ async def example_2_custom_options():
     
     # 自定义下载选项
     options = DownloadOptions(
-        output_dir="./my_videos",  # 输出目录
+        output_path="./my_videos",  # 输出目录
         quality="1080P",           # 画质
         filename_template="{author}_{title}"  # 文件名模板
     )
@@ -66,7 +66,7 @@ async def example_3_batch_download():
         # 添加更多 URL...
     ]
     
-    options = DownloadOptions(output_dir="./batch_downloads")
+    options = DownloadOptions(output_path="./batch_downloads")
     batch_result = await downloader.batch_download(urls, options)
     
     print(f"✅ 成功: {batch_result.successful}")

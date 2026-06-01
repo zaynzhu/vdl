@@ -59,6 +59,7 @@ class VideoMetadata:
     upload_date: datetime
     quality_options: List[QualityOption]
     content_type: ContentType
+    video_id: Optional[str] = None
     gallery_images: Optional[List[ImageItem]] = None
 
 

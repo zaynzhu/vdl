@@ -18,7 +18,7 @@ def server():
     """Create MCPServer with mocked downloader."""
     s = MCPServer.__new__(MCPServer)
     s.downloader = MagicMock()
-    return server
+    return s
 
 
 class TestDownloadVideoFieldNames:

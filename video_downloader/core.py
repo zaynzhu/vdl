@@ -10,6 +10,7 @@ from .models import (
     VideoMetadata,
     BatchResult,
     ExtractionContext,
+    ContentType,
 )
 from .exceptions import (
     ValidationError,
@@ -46,8 +47,8 @@ class VideoDownloader:
         # Initialize cookie store
         self.cookie_store = CookieStore(self.config.cookie_file)
         
-        # Initialize browser fingerprint
-        self.fingerprint = BrowserFingerprint()
+        # Initialize browser fingerprint generator
+        self.fingerprint_gen = BrowserFingerprint()
         
         # Initialize download manager
         self.download_manager = DownloadManager(self.config)
@@ -130,9 +131,10 @@ class VideoDownloader:
             
             # Load cookies for platform
             cookies = self.cookie_store.load_cookies(platform)
+            fingerprint = self.fingerprint_gen.generate_fingerprint(platform)
             context = ExtractionContext(
                 cookies=cookies,
-                fingerprint=self.fingerprint,
+                fingerprint=fingerprint,
             )
 
             # Extract metadata
@@ -150,6 +152,7 @@ class VideoDownloader:
             logger.info("Getting download URLs...")
             download_urls = await extractor.get_download_urls(
                 metadata, quality,
+                context=context,
                 cookie_file=self.config.cookie_file,
                 proxy=self.config.proxy,
             )
@@ -173,7 +176,7 @@ class VideoDownloader:
             )
             
             # Get headers for download
-            headers = self.fingerprint.get_headers(platform)
+            headers = self.fingerprint_gen.get_headers(platform)
             
             # Download file(s)
             logger.info(f"Downloading to: {output_path}")
@@ -185,8 +188,24 @@ class VideoDownloader:
                     output_path,
                     headers
                 )
+            elif len(download_urls) == 2 and metadata.content_type == ContentType.VIDEO:
+                # DASH: video + audio streams — download both, then merge
+                part_paths = []
+                for idx, dl_url in enumerate(download_urls):
+                    part_filename = f"{filename}_part{idx}"
+                    part_path = self.download_manager.resolve_output_path(
+                        output_dir, part_filename, auto_rename=True
+                    )
+                    await self.download_manager.download_file(
+                        dl_url, part_path, headers
+                    )
+                    part_paths.append(part_path)
+
+                result = await self.download_manager.merge_dash_files(
+                    part_paths[0], part_paths[1], output_path
+                )
             else:
-                # Multiple files (e.g., video + audio or image gallery)
+                # Multiple files (image gallery or other)
                 results = []
                 for idx, dl_url in enumerate(download_urls):
                     # Generate unique filename for each part
@@ -196,14 +215,14 @@ class VideoDownloader:
                         part_filename,
                         auto_rename=True
                     )
-                    
+
                     result = await self.download_manager.download_file(
                         dl_url,
                         part_path,
                         headers
                     )
                     results.append(result)
-                
+
                 # Return result of first file (main video/image)
                 result = results[0]
             
@@ -300,9 +319,10 @@ class VideoDownloader:
         
         # Load cookies for platform
         cookies = self.cookie_store.load_cookies(platform)
+        fingerprint = self.fingerprint_gen.generate_fingerprint(platform)
         context = ExtractionContext(
             cookies=cookies,
-            fingerprint=self.fingerprint,
+            fingerprint=fingerprint,
         )
 
         # Extract metadata
