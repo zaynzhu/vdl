@@ -44,10 +44,15 @@ setup(
             "flake8>=6.0.0",
             "mypy>=1.7.0",
         ],
+        "web": [
+            "fastapi>=0.104.0",
+            "uvicorn[standard]>=0.24.0",
+        ],
     },
     entry_points={
         "console_scripts": [
             "vdl=video_downloader.cli:cli_entry",
+            "vdl-web=video_downloader.web:main",
         ],
     },
 )

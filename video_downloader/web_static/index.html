@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VDL - Video Downloader</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f0f; color: #e0e0e0; min-height: 100vh; }
+.container { max-width: 800px; margin: 0 auto; padding: 24px 16px; }
+h1 { font-size: 28px; margin-bottom: 24px; }
+h1 span { color: #ff6b6b; }
+
+/* URL Input */
+.input-section { margin-bottom: 24px; }
+textarea { width: 100%; height: 100px; background: #1a1a1a; border: 1px solid #333; border-radius: 8px; color: #e0e0e0; padding: 12px; font-size: 14px; resize: vertical; font-family: monospace; }
+textarea:focus { outline: none; border-color: #ff6b6b; }
+textarea::placeholder { color: #666; }
+
+/* Preview Card */
+.preview-card { background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 16px; margin-bottom: 16px; display: none; }
+.preview-card.visible { display: flex; gap: 16px; }
+.preview-thumb { width: 160px; height: 90px; object-fit: cover; border-radius: 6px; background: #333; flex-shrink: 0; }
+.preview-info { flex: 1; min-width: 0; }
+.preview-title { font-size: 16px; font-weight: 600; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.preview-meta { font-size: 13px; color: #888; margin-bottom: 8px; }
+.preview-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+select { background: #222; border: 1px solid #444; border-radius: 6px; color: #e0e0e0; padding: 6px 10px; font-size: 13px; }
+select:focus { outline: none; border-color: #ff6b6b; }
+
+/* Buttons */
+.btn { padding: 8px 16px; border: none; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.15s; }
+.btn-primary { background: #ff6b6b; color: #fff; }
+.btn-primary:hover { background: #ff5252; }
+.btn-primary:disabled { background: #444; cursor: not-allowed; }
+.btn-secondary { background: #333; color: #e0e0e0; }
+.btn-secondary:hover { background: #444; }
+.btn-small { padding: 4px 10px; font-size: 12px; }
+.btn-danger { background: #d32f2f; color: #fff; }
+.btn-danger:hover { background: #b71c1c; }
+
+/* Loading */
+.spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #666; border-top-color: #ff6b6b; border-radius: 50%; animation: spin 0.6s linear infinite; margin-right: 6px; vertical-align: middle; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-text { color: #888; font-size: 13px; }
+
+/* Queue */
+.queue-section { margin-bottom: 24px; }
+.queue-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.queue-header h2 { font-size: 18px; }
+.queue-count { background: #333; padding: 2px 8px; border-radius: 10px; font-size: 12px; color: #888; }
+.queue-item { background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 12px 16px; margin-bottom: 8px; }
+.queue-item-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.queue-title { font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; margin-right: 8px; }
+.queue-url { font-size: 12px; color: #666; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 8px; }
+.queue-status { font-size: 12px; padding: 2px 8px; border-radius: 4px; }
+.status-pending { background: #333; color: #888; }
+.status-downloading { background: #1b3a26; color: #4caf50; }
+.status-completed { background: #1a237e; color: #64b5f6; }
+.status-failed { background: #3e1a1a; color: #ef5350; }
+.status-cancelled { background: #333; color: #888; }
+.progress-bar { height: 4px; background: #333; border-radius: 2px; overflow: hidden; }
+.progress-fill { height: 100%; background: #ff6b6b; transition: width 0.3s; }
+.queue-result { font-size: 12px; color: #4caf50; margin-top: 6px; }
+.queue-error { font-size: 12px; color: #ef5350; margin-top: 6px; }
+
+/* Cookies */
+.cookie-section { margin-bottom: 24px; }
+.cookie-section h2 { font-size: 18px; margin-bottom: 12px; }
+.cookie-list { margin-bottom: 12px; }
+.cookie-item { display: flex; justify-content: space-between; align-items: center; background: #1a1a1a; border: 1px solid #333; border-radius: 6px; padding: 8px 12px; margin-bottom: 4px; }
+.cookie-name { font-size: 13px; font-family: monospace; }
+.cookie-actions { display: flex; gap: 6px; align-items: center; }
+.upload-area { border: 2px dashed #333; border-radius: 8px; padding: 16px; text-align: center; cursor: pointer; transition: border-color 0.15s; }
+.upload-area:hover { border-color: #ff6b6b; }
+.upload-area input { display: none; }
+.upload-area p { font-size: 13px; color: #888; }
+
+/* Batch */
+.batch-info { font-size: 12px; color: #888; margin-top: 6px; }
+.batch-btn { margin-top: 8px; }
+
+/* Empty state */
+.empty { text-align: center; padding: 32px; color: #666; font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🎬 <span>VDL</span> Video Downloader</h1>
+
+  <!-- URL Input -->
+  <div class="input-section">
+    <textarea id="urlInput" placeholder="粘贴视频 URL（支持多行批量粘贴）&#10;YouTube / Bilibili / Douyin / Twitter / Instagram / TikTok"></textarea>
+    <div class="batch-info" id="batchInfo"></div>
+  </div>
+
+  <!-- Preview -->
+  <div class="preview-card" id="previewCard">
+    <img class="preview-thumb" id="previewThumb" src="" alt="">
+    <div class="preview-info">
+      <div class="preview-title" id="previewTitle"></div>
+      <div class="preview-meta" id="previewMeta"></div>
+      <div class="preview-actions">
+        <select id="qualitySelect"><option value="">最高画质</option></select>
+        <select id="cookieSelect"><option value="">不使用 Cookie</option></select>
+        <button class="btn btn-primary" id="downloadBtn" onclick="startDownload()">下载</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div id="loading" style="display:none" class="loading-text">
+    <span class="spinner"></span>正在获取视频信息...
+  </div>
+
+  <!-- Download Queue -->
+  <div class="queue-section">
+    <div class="queue-header">
+      <h2>下载队列</h2>
+      <span class="queue-count" id="queueCount">0</span>
+    </div>
+    <div id="queueList">
+      <div class="empty">粘贴 URL 开始下载</div>
+    </div>
+  </div>
+
+  <!-- Cookie Management -->
+  <div class="cookie-section">
+    <h2>Cookie 管理</h2>
+    <div class="cookie-list" id="cookieList"></div>
+    <div class="upload-area" id="uploadArea" onclick="document.getElementById('cookieFile').click()">
+      <input type="file" id="cookieFile" accept=".txt" onchange="uploadCookie(this)">
+      <p>📄 点击上传 cookies.txt（Netscape 格式）</p>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '';
+let currentUrls = [];
+let previewData = null;
+
+// --- URL Input ---
+const urlInput = document.getElementById('urlInput');
+const batchInfo = document.getElementById('batchInfo');
+let debounceTimer;
+
+urlInput.addEventListener('input', () => {
+  clearTimeout(debounceTimer);
+  const urls = urlInput.value.trim().split('\n').filter(u => u.trim());
+  currentUrls = urls;
+  if (urls.length > 1) {
+    batchInfo.textContent = `📋 ${urls.length} 个 URL`;
+  } else {
+    batchInfo.textContent = '';
+  }
+  if (urls.length === 1 && urls[0].startsWith('http')) {
+    debounceTimer = setTimeout(() => preview(urls[0]), 500);
+  } else {
+    hidePreview();
+  }
+});
+
+urlInput.addEventListener('paste', (e) => {
+  // Auto-preview on paste
+  setTimeout(() => {
+    const urls = urlInput.value.trim().split('\n').filter(u => u.trim());
+    if (urls.length === 1 && urls[0].startsWith('http')) {
+      preview(urls[0]);
+    }
+  }, 100);
+});
+
+// --- Preview ---
+async function preview(url) {
+  const loading = document.getElementById('loading');
+  const card = document.getElementById('previewCard');
+  loading.style.display = 'block';
+  card.classList.remove('visible');
+  previewData = null;
+
+  try {
+    const resp = await fetch(`${API}/api/preview`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({url}),
+    });
+    if (!resp.ok) throw new Error(await resp.text());
+    const data = await resp.json();
+    previewData = data;
+
+    document.getElementById('previewThumb').src = data.thumbnail || '';
+    document.getElementById('previewTitle').textContent = data.title;
+    const dur = data.duration > 0 ? `${Math.floor(data.duration/60)}:${String(data.duration%60).padStart(2,'0')}` : '';
+    document.getElementById('previewMeta').textContent = [data.platform, data.author, dur].filter(Boolean).join(' · ');
+
+    // Quality select
+    const qs = document.getElementById('qualitySelect');
+    qs.innerHTML = '<option value="">最高画质</option>';
+    (data.qualities || []).forEach(q => {
+      qs.innerHTML += `<option value="${q.id}">${q.name}</option>`;
+    });
+
+    card.classList.add('visible');
+  } catch (e) {
+    // Silent fail on preview
+  } finally {
+    loading.style.display = 'none';
+  }
+}
+
+function hidePreview() {
+  document.getElementById('previewCard').classList.remove('visible');
+  document.getElementById('loading').style.display = 'none';
+  previewData = null;
+}
+
+// --- Download ---
+async function startDownload() {
+  const urls = currentUrls.length > 0 ? currentUrls : [urlInput.value.trim()];
+  const quality = document.getElementById('qualitySelect').value;
+  const cookie = document.getElementById('cookieSelect').value;
+
+  for (const url of urls) {
+    if (!url) continue;
+    await fetch(`${API}/api/download`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({url, quality, cookie}),
+    });
+  }
+
+  urlInput.value = '';
+  currentUrls = [];
+  batchInfo.textContent = '';
+  hidePreview();
+  refreshQueue();
+}
+
+// --- Queue ---
+async function refreshQueue() {
+  try {
+    const resp = await fetch(`${API}/api/queue`);
+    const tasks = await resp.json();
+    renderQueue(tasks);
+  } catch (e) {}
+}
+
+function renderQueue(tasks) {
+  const list = document.getElementById('queueList');
+  const count = document.getElementById('queueCount');
+  count.textContent = tasks.length;
+
+  if (tasks.length === 0) {
+    list.innerHTML = '<div class="empty">粘贴 URL 开始下载</div>';
+    return;
+  }
+
+  list.innerHTML = tasks.map(t => {
+    const statusClass = `status-${t.status}`;
+    const statusText = {pending:'等待中',downloading:'下载中',completed:'已完成',failed:'失败',cancelled:'已取消'}[t.status] || t.status;
+    const size = t.file_size > 0 ? ` · ${(t.file_size/1024/1024).toFixed(1)} MB` : '';
+    return `
+      <div class="queue-item">
+        <div class="queue-item-header">
+          <span class="queue-title">${esc(t.title || t.url)}</span>
+          <span class="queue-status ${statusClass}">${statusText}</span>
+          ${t.status === 'pending' || t.status === 'downloading' ? `<button class="btn btn-small btn-danger" onclick="cancelTask('${t.id}')">取消</button>` : ''}
+        </div>
+        ${!t.title ? `<div class="queue-url">${esc(t.url)}</div>` : ''}
+        ${t.status === 'downloading' ? '<div class="progress-bar"><div class="progress-fill" style="width:50%"></div></div>' : ''}
+        ${t.status === 'completed' ? `<div class="queue-result">✅ ${esc(t.file_path)}${size}</div>` : ''}
+        ${t.status === 'failed' ? `<div class="queue-error">❌ ${esc(t.error)}</div>` : ''}
+      </div>`;
+  }).reverse().join('');
+}
+
+async function cancelTask(id) {
+  await fetch(`${API}/api/queue/${id}`, {method: 'DELETE'});
+  refreshQueue();
+}
+
+// --- Cookies ---
+async function loadCookies() {
+  try {
+    const resp = await fetch(`${API}/api/cookies`);
+    const cookies = await resp.json();
+    renderCookies(cookies);
+
+    // Also update the select in preview
+    const sel = document.getElementById('cookieSelect');
+    sel.innerHTML = '<option value="">不使用 Cookie</option>';
+    cookies.forEach(c => {
+      sel.innerHTML += `<option value="${c.name}">${c.name}</option>`;
+    });
+  } catch (e) {}
+}
+
+function renderCookies(cookies) {
+  const list = document.getElementById('cookieList');
+  if (cookies.length === 0) {
+    list.innerHTML = '';
+    return;
+  }
+  list.innerHTML = cookies.map(c => `
+    <div class="cookie-item">
+      <span class="cookie-name">🍪 ${esc(c.name)}</span>
+      <div class="cookie-actions">
+        <span style="font-size:11px;color:#666">${(c.size/1024).toFixed(1)} KB</span>
+        <button class="btn btn-small btn-danger" onclick="deleteCookie('${esc(c.name)}')">删除</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function uploadCookie(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const form = new FormData();
+  form.append('file', file);
+  await fetch(`${API}/api/cookies`, {method: 'POST', body: form});
+  input.value = '';
+  loadCookies();
+}
+
+async function deleteCookie(name) {
+  await fetch(`${API}/api/cookies/${encodeURIComponent(name)}`, {method: 'DELETE'});
+  loadCookies();
+}
+
+// --- SSE ---
+function connectSSE() {
+  const es = new EventSource(`${API}/api/events`);
+  es.onmessage = (e) => {
+    const data = JSON.parse(e.data);
+    if (['completed', 'failed', 'cancelled', 'status'].includes(data.type)) {
+      refreshQueue();
+    }
+  };
+  es.onerror = () => {
+    es.close();
+    setTimeout(connectSSE, 3000);
+  };
+}
+
+// --- Utils ---
+function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+
+// --- Init ---
+refreshQueue();
+loadCookies();
+connectSSE();
+</script>
+</body>
+</html>
