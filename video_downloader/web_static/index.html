@@ -185,7 +185,10 @@ async function preview(url) {
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({url}),
     });
-    if (!resp.ok) throw new Error(await resp.text());
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({detail: 'Preview failed'}));
+      throw new Error(err.detail || 'Preview failed');
+    }
     const data = await resp.json();
     previewData = data;
 
@@ -203,7 +206,10 @@ async function preview(url) {
 
     card.classList.add('visible');
   } catch (e) {
-    // Silent fail on preview
+    document.getElementById('previewTitle').textContent = '预览失败: ' + e.message;
+    document.getElementById('previewMeta').textContent = url;
+    document.getElementById('previewThumb').src = '';
+    card.classList.add('visible');
   } finally {
     loading.style.display = 'none';
   }

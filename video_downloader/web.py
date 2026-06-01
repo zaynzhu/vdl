@@ -68,7 +68,10 @@ class DownloadTask:
 
 class AppState:
     def __init__(self):
-        self.downloader = VideoDownloader()
+        # Use empty cookie_file to avoid permission errors on default ./cookies.txt
+        config = DownloaderConfig()
+        config.cookie_file = ""
+        self.downloader = VideoDownloader(config)
         self.tasks: Dict[str, DownloadTask] = {}
         self.async_tasks: Dict[str, asyncio.Task] = {}
         self.sse_clients: Set[asyncio.Queue] = set()
@@ -84,6 +87,18 @@ class AppState:
             except asyncio.QueueFull:
                 dead.add(q)
         self.sse_clients -= dead
+
+
+def _make_config(cookie_name: Optional[str] = None) -> DownloaderConfig:
+    """Create a config with safe defaults for web usage."""
+    config = DownloaderConfig()
+    # Don't use the default ./cookies.txt — it may not exist or be locked
+    config.cookie_file = ""
+    if cookie_name:
+        cookie_path = state.cookie_dir / cookie_name
+        if cookie_path.exists():
+            config.cookie_file = str(cookie_path)
+    return config
 
 
 state = AppState()
@@ -172,11 +187,7 @@ async def _run_download(task: DownloadTask, cookie_name: Optional[str] = None):
         await state.emit({"type": "status", "id": task.id, "status": "downloading"})
 
         # Configure cookies if specified
-        config = DownloaderConfig()
-        if cookie_name:
-            cookie_path = state.cookie_dir / cookie_name
-            if cookie_path.exists():
-                config.cookie_file = str(cookie_path)
+        config = _make_config(cookie_name)
 
         # Reuse the shared downloader (only override config for cookies)
         downloader = state.downloader if not cookie_name else VideoDownloader(config)
