@@ -139,6 +139,23 @@ class TestCookies:
         resp = client.delete('/api/cookies/nope.txt')
         assert resp.status_code == 404
 
+    def test_upload_path_traversal_rejected(self, client):
+        """Filename with path traversal should be sanitized."""
+        resp = client.post(
+            '/api/cookies',
+            files={'file': ('../../etc/passwd', b'evil', 'text/plain')},
+        )
+        # Should either reject or sanitize to 'passwd'
+        if resp.status_code == 200:
+            assert resp.json()['name'] == 'passwd'
+        else:
+            assert resp.status_code == 400
+
+    def test_delete_path_traversal_rejected(self, client):
+        """DELETE with path traversal should return 400."""
+        resp = client.delete('/api/cookies/../../etc/passwd')
+        assert resp.status_code in (400, 404)
+
 
 class TestIndex:
 

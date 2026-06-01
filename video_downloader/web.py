@@ -14,7 +14,7 @@ from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 
 from .config import DownloaderConfig
 from .core import VideoDownloader
@@ -70,12 +70,20 @@ class AppState:
     def __init__(self):
         self.downloader = VideoDownloader()
         self.tasks: Dict[str, DownloadTask] = {}
-        self.events: asyncio.Queue = asyncio.Queue()
+        self.async_tasks: Dict[str, asyncio.Task] = {}
+        self.sse_clients: Set[asyncio.Queue] = set()
         self.cookie_dir = Path("./cookies")
         self.cookie_dir.mkdir(exist_ok=True)
 
     async def emit(self, event: dict):
-        await self.events.put(event)
+        """Broadcast event to all connected SSE clients."""
+        dead = set()
+        for q in self.sse_clients:
+            try:
+                q.put_nowait(event)
+            except asyncio.QueueFull:
+                dead.add(q)
+        self.sse_clients -= dead
 
 
 state = AppState()
@@ -142,12 +150,17 @@ async def start_download(body: dict):
     if not url:
         raise HTTPException(400, "URL is required")
 
+    # Validate cookie_name if provided
+    if cookie_name:
+        _validate_cookie_path(cookie_name)
+
     task_id = str(uuid.uuid4())[:8]
     task = DownloadTask(id=task_id, url=url, quality=quality or "")
     state.tasks[task_id] = task
 
-    # Start download in background
-    asyncio.create_task(_run_download(task, cookie_name))
+    # Start download in background, store reference for cancellation
+    async_task = asyncio.create_task(_run_download(task, cookie_name))
+    state.async_tasks[task_id] = async_task
 
     return {"id": task_id, "status": task.status}
 
@@ -165,9 +178,11 @@ async def _run_download(task: DownloadTask, cookie_name: Optional[str] = None):
             if cookie_path.exists():
                 config.cookie_file = str(cookie_path)
 
-        downloader = VideoDownloader(config)
+        # Reuse the shared downloader (only override config for cookies)
+        downloader = state.downloader if not cookie_name else VideoDownloader(config)
 
-        # Preview first for title
+        # Extract metadata once, reuse for preview + download
+        metadata = None
         try:
             metadata = await downloader.extract_metadata(task.url)
             task.title = metadata.title
@@ -182,9 +197,17 @@ async def _run_download(task: DownloadTask, cookie_name: Optional[str] = None):
         except Exception:
             pass
 
+        # Check cancellation before download
+        if task.status == TaskStatus.CANCELLED:
+            return
+
         # Download
         options = DownloadOptions(quality=task.quality or None)
         result = await downloader.download(task.url, options)
+
+        # Check cancellation after download
+        if task.status == TaskStatus.CANCELLED:
+            return
 
         if result.success:
             task.status = TaskStatus.COMPLETED
@@ -201,10 +224,16 @@ async def _run_download(task: DownloadTask, cookie_name: Optional[str] = None):
                 "type": "failed", "id": task.id, "error": task.error,
             })
 
+    except asyncio.CancelledError:
+        task.status = TaskStatus.CANCELLED
+        await state.emit({"type": "cancelled", "id": task.id})
     except Exception as e:
-        task.status = TaskStatus.FAILED
-        task.error = str(e)
-        await state.emit({"type": "failed", "id": task.id, "error": str(e)})
+        if task.status != TaskStatus.CANCELLED:
+            task.status = TaskStatus.FAILED
+            task.error = str(e)
+            await state.emit({"type": "failed", "id": task.id, "error": str(e)})
+    finally:
+        state.async_tasks.pop(task.id, None)
 
 
 # ---------------------------------------------------------------------------
@@ -225,7 +254,14 @@ async def cancel_task(task_id: str):
         raise HTTPException(404, "Task not found")
     if task.status in (TaskStatus.COMPLETED, TaskStatus.FAILED):
         raise HTTPException(400, "Task already finished")
+
     task.status = TaskStatus.CANCELLED
+
+    # Actually cancel the asyncio task
+    async_task = state.async_tasks.get(task_id)
+    if async_task and not async_task.done():
+        async_task.cancel()
+
     await state.emit({"type": "cancelled", "id": task_id})
     return {"ok": True}
 
@@ -233,6 +269,29 @@ async def cancel_task(task_id: str):
 # ---------------------------------------------------------------------------
 # Cookies
 # ---------------------------------------------------------------------------
+
+def _sanitize_filename(name: str) -> str:
+    """Sanitize uploaded filename — strip path components and dangerous chars."""
+    # Take only the basename (strip any path traversal)
+    name = Path(name).name
+    # Reject empty or dot-only names
+    if not name or name in (".", ".."):
+        raise HTTPException(400, "Invalid filename")
+    # Reject path separators (belt-and-suspenders)
+    if "/" in name or "\\" in name or "\0" in name:
+        raise HTTPException(400, "Invalid filename")
+    return name
+
+
+def _validate_cookie_path(name: str) -> Path:
+    """Validate that cookie name resolves to a path inside cookie_dir."""
+    _sanitize_filename(name)
+    resolved = (state.cookie_dir / name).resolve()
+    cookie_resolved = state.cookie_dir.resolve()
+    if not str(resolved).startswith(str(cookie_resolved)):
+        raise HTTPException(400, "Invalid cookie name")
+    return resolved
+
 
 @app.get("/api/cookies")
 async def list_cookies():
@@ -252,16 +311,17 @@ async def upload_cookie(file: UploadFile = File(...)):
     """Upload a cookies.txt file."""
     if not file.filename:
         raise HTTPException(400, "No filename")
-    dest = state.cookie_dir / file.filename
+    name = _sanitize_filename(file.filename)
+    dest = state.cookie_dir / name
     content = await file.read()
     dest.write_bytes(content)
-    return {"name": file.filename, "size": len(content)}
+    return {"name": name, "size": len(content)}
 
 
 @app.delete("/api/cookies/{name}")
 async def delete_cookie(name: str):
     """Delete a cookie file."""
-    path = state.cookie_dir / name
+    path = _validate_cookie_path(name)
     if not path.exists():
         raise HTTPException(404, "Cookie file not found")
     path.unlink()
@@ -275,12 +335,22 @@ async def delete_cookie(name: str):
 @app.get("/api/events")
 async def events():
     """SSE endpoint for real-time progress updates."""
-    async def generate():
-        while True:
-            event = await state.events.get()
-            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+    client_queue: asyncio.Queue = asyncio.Queue(maxsize=100)
+    state.sse_clients.add(client_queue)
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    async def generate():
+        try:
+            while True:
+                event = await client_queue.get()
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        finally:
+            state.sse_clients.discard(client_queue)
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -298,10 +368,9 @@ def main():
     print(f"  http://{host}:{port}")
     print(f"  Press Ctrl+C to stop\n")
 
-    # Open browser
-    asyncio.get_event_loop().call_later(
-        1.0, lambda: webbrowser.open(f"http://{host}:{port}")
-    )
+    # Open browser after server starts
+    loop = asyncio.new_event_loop()
+    loop.call_later(1.0, lambda: webbrowser.open(f"http://{host}:{port}"))
 
     uvicorn.run(app, host=host, port=port, log_level="warning")
 
