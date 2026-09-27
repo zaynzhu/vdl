@@ -136,3 +136,24 @@ async def main():
 
 asyncio.run(main())
 ```
+
+## Desktop App (macOS)
+
+从 `dist/VDL-<版本>.dmg` 安装：挂载后把 **VDL.app** 拖入 Applications。
+
+**首次打开**：无 Apple Developer 签名（ad-hoc），绕过 Gatekeeper 的方式为
+**右键点击 VDL.app → 打开 → 再点「打开」**（直接双击会提示无法验证开发者）。
+
+**运行环境要求**：
+
+| 依赖 | 说明 |
+|------|------|
+| 代理（下 YouTube 时） | 默认跟随系统环境变量 `HTTPS_PROXY`，也可在应用「设置」页覆盖 |
+| cookies | 应用「Cookie 管理」上传 Netscape cookies.txt，或选择浏览器（Chrome 首次会触发钥匙串授权弹窗） |
+| deno | yt-dlp 解 YouTube JS 挑战必需：`brew install deno`（缺它时 YouTube 预览报 "The page needs to be reloaded"） |
+| ffmpeg / ffprobe | 已随 app 打包（静态构建），无需安装 |
+
+**功能入口**：粘贴 URL 自动预览（画质下拉含 4K/2160p 与预计体积）→ 下载队列实时进度；「设置」页可改代理与下载目录（默认 `~/Downloads/vdl`）。
+
+**自行构建**：`scripts/build_desktop.sh`（Python 3.12 venv + PyInstaller；详见 `vdl.spec`）。
+

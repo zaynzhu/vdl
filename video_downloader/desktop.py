@@ -30,7 +30,11 @@ def _inject_bundled_binaries() -> None:
         logger.info(f"Bundled binaries injected: {res_bin}")
 
 
-def _pick_free_port() -> int:
+def _pick_port() -> int:
+    # VDL_DESKTOP_PORT 供自动化测试固定端口；默认随机空闲端口
+    custom = os.environ.get("VDL_DESKTOP_PORT")
+    if custom and custom.isdigit():
+        return int(custom)
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         return s.getsockname()[1]
@@ -44,7 +48,7 @@ def main() -> None:
 
     from .web import app
 
-    port = _pick_free_port()
+    port = _pick_port()
     server = uvicorn.Server(
         uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning")
     )
