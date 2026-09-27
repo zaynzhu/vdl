@@ -56,6 +56,7 @@ setup(
         "console_scripts": [
             "vdl=video_downloader.cli:cli_entry",
             "vdl-web=video_downloader.web:main",
+            "vdl-app=video_downloader.desktop:main",
         ],
     },
 )
