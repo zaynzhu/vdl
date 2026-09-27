@@ -181,7 +181,7 @@ class YtDlpExtractor(PlatformExtractor):
         if platform == 'generic':
             platform = self.get_platform_name_for_url(info.get('webpage_url', '')) or 'unknown'
 
-        qualities = self._parse_qualities(info.get('formats', []))
+        qualities = self._parse_qualities(info.get('formats', []), info.get('duration') or 0)
 
         upload_date = datetime.now()
         date_str = info.get('upload_date')
@@ -205,20 +205,39 @@ class YtDlpExtractor(PlatformExtractor):
             content_type=ContentType.VIDEO,
         )
 
-    def _parse_qualities(self, formats: list) -> List[QualityOption]:
-        seen = set()
-        qualities = []
+    @staticmethod
+    def _estimate_file_size(fmt: dict, duration: float) -> int:
+        """估算单条流体积（字节）：filesize > filesize_approx > tbr × duration。"""
+        for key in ('filesize', 'filesize_approx'):
+            if fmt.get(key):
+                return int(fmt[key])
+        tbr = fmt.get('tbr')
+        if tbr and duration > 0:
+            # tbr 单位 kbps
+            return int(tbr * 1000 * duration / 8)
+        return 0
+
+    def _parse_qualities(self, formats: list, duration: float = 0.0) -> List[QualityOption]:
+        # 同一高度常有多个 format（H.264/VP9/AV1），取码率最高的一档作为代表
+        best_by_height: Dict[int, dict] = {}
         for f in formats:
             height = f.get('height')
-            if not height or height in seen:
+            if not height:
                 continue
-            seen.add(height)
+            current = best_by_height.get(height)
+            if current is None or (f.get('tbr') or 0) > (current.get('tbr') or 0):
+                best_by_height[height] = f
+
+        qualities = []
+        for height, f in best_by_height.items():
             qualities.append(QualityOption(
                 quality_id=f.get('format_id', ''),
                 name=f"{height}p",
                 resolution=f"{f.get('width', 0)}x{height}",
                 width=f.get('width', 0),
                 height=height,
+                bitrate=int(f.get('tbr') or 0),
+                file_size_estimate=self._estimate_file_size(f, duration),
                 format=f.get('ext', 'mp4'),
             ))
         qualities.sort(key=lambda q: q.height, reverse=True)

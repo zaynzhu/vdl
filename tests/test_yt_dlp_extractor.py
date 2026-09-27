@@ -395,3 +395,39 @@ class TestYtDlpGetDownloadUrls:
         import inspect
         sig = inspect.signature(self.extractor.get_download_urls)
         assert 'context' in sig.parameters
+
+
+class TestParseQualitiesSizes:
+    """_parse_qualities 应填充 bitrate 与 file_size_estimate。"""
+
+    def setup_method(self):
+        self.extractor = YtDlpExtractor()
+
+    def test_fills_size_estimate_from_filesize(self):
+        formats = [{'format_id': '401', 'ext': 'mp4', 'height': 2160, 'width': 3840,
+                    'tbr': 5987, 'filesize': 2224000000}]
+        qualities = self.extractor._parse_qualities(formats, duration=2969)
+        assert len(qualities) == 1
+        q = qualities[0]
+        assert q.file_size_estimate == 2224000000
+        assert q.bitrate == 5987
+        assert q.name == '2160p'
+
+    def test_falls_back_to_tbr_times_duration(self):
+        formats = [{'format_id': '313', 'ext': 'webm', 'height': 2160, 'tbr': 14301}]
+        qualities = self.extractor._parse_qualities(formats, duration=2969)
+        assert qualities[0].file_size_estimate == int(14301 * 1000 * 2969 / 8)
+
+    def test_picks_highest_bitrate_per_height(self):
+        formats = [
+            {'format_id': 'a', 'ext': 'mp4', 'height': 1080, 'tbr': 1000, 'filesize': 100},
+            {'format_id': 'b', 'ext': 'webm', 'height': 1080, 'tbr': 5000, 'filesize': 500},
+        ]
+        qualities = self.extractor._parse_qualities(formats, duration=0)
+        assert len(qualities) == 1
+        assert qualities[0].quality_id == 'b'
+        assert qualities[0].file_size_estimate == 500
+
+    def test_skips_audio_only_formats(self):
+        formats = [{'format_id': '251', 'ext': 'webm', 'tbr': 128, 'filesize': 50000}]
+        assert self.extractor._parse_qualities(formats, duration=100) == []
