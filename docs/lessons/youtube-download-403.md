@@ -27,7 +27,7 @@
 - **为什么这样做**（三个条件缺一不可）：
   1. **yt-dlp 版本**：YouTube 的流下发依赖 PO Token（Proof of Origin）反爬机制，2025.10 之后变化频繁；旧版 extractor 拿不到有效流清单。brew 版自带新 Python（≥3.10），与系统 Python 3.9 解耦。
   2. **代理**：本机直连 YouTube 被风控/劫持（表现为 bot 检测、SSL 证书主机名不匹配），走本地 Clash 类代理后消失。
-  3. **cookies**：不带 cookies 报 "Sign in to confirm you're not a bot"；Chrome 有登录态即可，无需导出 Netscape 文件。
+  3. **cookies（须有登录态）**：不带 cookies 报 "Sign in to confirm you're not a bot"；Chrome 有登录态即可，无需导出 Netscape 文件。**2026-09-27 对照实测（yt-dlp 2026.08.19）**：不带 cookies 与带「空 cookies 文件」（有文件但无登录态）同样报 bot 检测，连格式列表（`-F`）都拿不到——登录是整个 YouTube 下载的通用硬前提，1080p 与 4K 无差别，并非 4K 特有要求。
 - **适用条件**：macOS + brew 的 yt-dlp ≥2026.08；代理端口以 `USAGE.md` 当时的记录为准；Linux/无代理环境条件不同，勿照搬。
 - **验证证据**：真实下载 `PPrzeY7H904`（49:29）成功——日志 `Downloading 1 format(s): 399`（视频 378.46MiB）+ `f251`（音频 43.95MiB），`[Merger] Merging formats into ...mp4`；`ffprobe` 复核输出 `codec_name=av1, width=1920, height=1080, avg_frame_rate=30/1, duration=2969.034`，文件 423M。
 - **交叉验证**：单 agent 多轮执行收敛，无书面审查轨迹。
