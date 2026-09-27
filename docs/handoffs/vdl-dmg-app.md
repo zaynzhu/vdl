@@ -76,8 +76,8 @@
 | 构建 Python 3.12 + yt-dlp>=2026.8 | 模型建议（有实测证据） | lessons ⛔ 条目：3.9 + 旧版必挂 |
 | bundle 静态 ffmpeg | 模型建议 | 许可配置是注意点 |
 | 4K 分阶段（先验证 PO Token 是否已免） | 模型建议 | lessons 🔶 待验证条目决定走阶段 1 还是 2 |
-| Apple 签名方式 | **待定** | 需问用户有无 Developer 账号；阻塞 dmg 分发方式，不阻塞开发 |
-| 最低 macOS 版本 | 待定 | 建议 13+（pywebview/WebKit 支持面），待用户确认 |
+| Apple 签名方式 | **用户已确认**（2026-09-27） | 无 Developer 账号，dmg 仅自用；维持 ad-hoc 签名。实测本机构建产物无 quarantine 标记，双击直接打开 |
+| 最低 macOS 版本 | **用户已确认**（2026-09-27） | 用户 M2 Mac mini / macOS 26，对下限无偏好；维持 13.0（交接建议值，提高无功能收益） |
 
 ## 6. 项目当前状态（2026-09-27 核对）
 
@@ -133,7 +133,7 @@ yt-dlp 2026.08.19 对测试视频 `-F` 直接返回 2160p（313 VP9 4.94GiB / 40
 
 ### 偏离与待定项处理
 
-- **两处待定项用户未及时答复，按文档建议默认值处理**：① 签名 = 无 Developer 账号路径（ad-hoc + README/USAGE 说明右键打开）；② 最低 macOS 13+（Info.plist `LSMinimumSystemVersion=13.0`）。**发布前需用户确认**，有 Developer 账号可补 notarization。
+- **两处待定项已由用户确认关闭（2026-09-27）**：① 签名 = ad-hoc 维持（无 Developer 账号，dmg 仅自用不分发；本机构建产物实测无 quarantine，双击直接打开）；② 最低 macOS = 13.0 维持（用户 M2 Mac mini / macOS 26，无偏好，提高无功能收益）。原按默认值处理的两项不再需要后续动作。
 - ffmpeg bundle 选 evermeet.cx 静态 arm64 构建（77M×2）而非交接 4.2 建议的 universal2：首版目标本机 Apple Silicon，universal2 需另行编译，体积翻倍；如需 Intel 支持再扩。
 - deno **未 bundle**（110M）：EJS solver 运行时依赖检测系统 PATH（本机 brew 已装）；USAGE.md 已写明 `brew install deno`。solver 脚本首次联网自动下载（remote_components 白名单）。
 - `open` 启动 .app 不继承 shell 环境变量（launchd 隔离）：桌面形态的代理/端口环境变量不能依赖终端 export，靠设置页或 launchctl setenv；为此 desktop 壳加了 `VDL_DESKTOP_PORT` 测试钩子。
@@ -141,7 +141,7 @@ yt-dlp 2026.08.19 对测试视频 `-F` 直接返回 2160p（313 VP9 4.94GiB / 40
 
 ### 剩余问题与建议下一位动作
 
-1. **待用户确认**：签名方式、最低 macOS 版本（上述默认值）、是否 push 本地 commit（main 现领先 origin/main 9 个 commit）
+1. ~~待用户确认：签名方式、最低 macOS 版本~~ **均已确认关闭**（见「偏离与待定项处理」）；是否 push 已执行（a346fa3 及后续 docs 更新均已推 origin/main）
 2. **验收例子 1**（双击启动出窗口）需真人 GUI 确认；4K 完整下载（~5GB，代理速度约 274KB/s）建议用户自行择时验收
 3. `test_ytdlp_integration.py` fixture 现存 bug（ExtractionContext 必填字段）可顺手修复
 4. 未做：应用图标、自动更新（属 Tauri 演进方向）、Intel 架构
