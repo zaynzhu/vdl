@@ -40,9 +40,10 @@ class TestPreview:
             ],
             content_type=ContentType.VIDEO,
         )
-        with patch('video_downloader.web.state') as mock_state:
-            mock_state.downloader = AsyncMock()
-            mock_state.downloader.extract_metadata.return_value = metadata
+        with patch('video_downloader.web.YtDlpExtractor') as mock_extractor_cls:
+            mock_extractor = mock_extractor_cls.return_value
+            mock_extractor.get_platform_name_for_url.return_value = 'bilibili'
+            mock_extractor.extract_metadata = AsyncMock(return_value=metadata)
             resp = client.post('/api/preview', json={'url': 'https://www.bilibili.com/video/BV1xx'})
 
         assert resp.status_code == 200
@@ -163,3 +164,70 @@ class TestIndex:
         resp = client.get('/')
         assert resp.status_code == 200
         assert 'VDL' in resp.text
+
+
+class TestSettings:
+
+    def test_get_and_update_settings(self, client, tmp_path):
+        from video_downloader import web
+        with patch.object(web, 'SETTINGS_PATH', tmp_path / 'settings.json'):
+            resp = client.get('/api/settings')
+            assert resp.status_code == 200
+            data = resp.json()
+            assert 'download_dir' in data
+            assert 'effective_proxy' in data
+
+            resp = client.post('/api/settings', json={
+                'proxy': 'http://127.0.0.1:7897',
+                'download_dir': '/tmp/vdl-test',
+            })
+            assert resp.status_code == 200
+            assert resp.json()['proxy'] == 'http://127.0.0.1:7897'
+            # 落盘核验
+            assert (tmp_path / 'settings.json').exists()
+
+    def test_invalid_browser_rejected(self, client, tmp_path):
+        from video_downloader import web
+        with patch.object(web, 'SETTINGS_PATH', tmp_path / 'settings.json'):
+            resp = client.post('/api/settings', json={'browser_cookies': 'nosuch'})
+            assert resp.status_code == 400
+
+
+class TestFormatSelector:
+
+    def test_empty_is_highest(self):
+        from video_downloader.web import _build_format_selector
+        assert _build_format_selector(None) == 'bv*+ba/b'
+        assert _build_format_selector('') == 'bv*+ba/b'
+
+    def test_format_id_direct(self):
+        from video_downloader.web import _build_format_selector
+        s = _build_format_selector('313')
+        assert s.startswith('313+bestaudio')
+        assert 'bv*+ba/b' in s
+
+    def test_height_bounded(self):
+        from video_downloader.web import _build_format_selector
+        s = _build_format_selector('2160p')
+        assert 'height<=2160' in s
+
+
+class TestCookieSource:
+
+    def test_browser_prefix(self):
+        from video_downloader.web import _resolve_cookie_source
+        cookie_file, browser = _resolve_cookie_source('browser:chrome', {})
+        assert cookie_file is None
+        assert browser == ('chrome',)
+
+    def test_unknown_browser_ignored(self):
+        from video_downloader.web import _resolve_cookie_source
+        cookie_file, browser = _resolve_cookie_source('browser:nosuch', {})
+        assert cookie_file is None and browser is None
+
+    def test_file_cookie(self):
+        from video_downloader.web import _resolve_cookie_source, state
+        (state.cookie_dir / 'ck_src.txt').write_text('# Netscape')
+        cookie_file, browser = _resolve_cookie_source('ck_src.txt', {})
+        assert cookie_file and cookie_file.endswith('ck_src.txt') and browser is None
+        (state.cookie_dir / 'ck_src.txt').unlink()
