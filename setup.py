@@ -22,17 +22,16 @@ setup(
         "Intended Audience :: Developers",
         "License :: OSI Approved :: MIT License",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.8",
-        "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
     ],
-    python_requires=">=3.8",
+    python_requires=">=3.10",
     install_requires=[
         "aiohttp>=3.9.0",
         "playwright>=1.40.0",
         "httpx>=0.25.0",
-        "yt-dlp>=2024.1.0",
+        "yt-dlp>=2026.8",
         "python-dateutil>=2.8.2",
     ],
     extras_require={
@@ -47,6 +46,10 @@ setup(
         "web": [
             "fastapi>=0.104.0",
             "uvicorn[standard]>=0.24.0",
+            "python-multipart>=0.0.9",
+        ],
+        "app": [
+            "pywebview>=5.0",
         ],
     },
     entry_points={

@@ -2,7 +2,13 @@
 aiohttp>=3.9.0
 playwright>=1.40.0
 httpx>=0.25.0
-yt-dlp>=2024.1.0
+yt-dlp>=2026.8
+
+# Web UI
+python-multipart>=0.0.9
+
+# Desktop app
+pywebview>=5.0
 
 # Data handling
 python-dateutil>=2.8.2
