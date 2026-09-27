@@ -36,6 +36,9 @@ class YtDlpExtractor(PlatformExtractor):
         'quiet': True,
         'no_warnings': True,
         'ignoreerrors': False,
+        # 解 YouTube JS 挑战（n challenge）需要 EJS solver；白名单允许按需获取，
+        # 不影响其他平台。运行时需 deno（brew 版 yt-dlp 自带该依赖）。
+        'remote_components': ['ejs:github'],
     }
 
     def __init__(self):
@@ -63,6 +66,7 @@ class YtDlpExtractor(PlatformExtractor):
         *,
         cookie_file: Optional[str] = None,
         proxy: Optional[str] = None,
+        browser_cookies: Optional[str] = None,
     ) -> VideoMetadata:
         logger.debug(f"[yt-dlp] Extracting metadata: {url}")
         # Unpack overrides from context when explicit kwargs are not provided
@@ -70,7 +74,11 @@ class YtDlpExtractor(PlatformExtractor):
             cookie_file = getattr(context, 'cookie_file', None)
         if proxy is None:
             proxy = getattr(context, 'proxy', None)
-        ydl_opts = self._build_opts(cookie_file=cookie_file, proxy=proxy)
+        ydl_opts = self._build_opts(
+            cookie_file=cookie_file,
+            proxy=proxy,
+            browser_cookies=browser_cookies,
+        )
 
         try:
             info = await asyncio.to_thread(self._extract_info, url, ydl_opts)
@@ -160,11 +168,17 @@ class YtDlpExtractor(PlatformExtractor):
         cookie_file: Optional[str] = None,
         proxy: Optional[str] = None,
         quality: Optional[str] = None,
+        browser_cookies: Optional[str] = None,
     ) -> dict:
         opts = dict(self.DEFAULT_YDL_OPTS)
 
         if cookie_file:
             opts['cookiefile'] = cookie_file
+
+        # 浏览器 cookies（yt-dlp 原生支持，如 ('chrome',)；优先级低于显式 cookiefile）
+        if browser_cookies:
+            app = browser_cookies[0] if isinstance(browser_cookies, tuple) else browser_cookies
+            opts['cookiesfrombrowser'] = (app,)
 
         if proxy:
             opts['proxy'] = proxy
@@ -223,6 +237,10 @@ class YtDlpExtractor(PlatformExtractor):
         for f in formats:
             height = f.get('height')
             if not height:
+                continue
+            # 过滤 storyboard 缩略图拼图流（sb0/sb1...，非真实画质档）
+            note = f.get('format_note') or ''
+            if f.get('ext') == 'mhtml' or 'storyboard' in note:
                 continue
             current = best_by_height.get(height)
             if current is None or (f.get('tbr') or 0) > (current.get('tbr') or 0):

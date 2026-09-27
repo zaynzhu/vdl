@@ -431,3 +431,12 @@ class TestParseQualitiesSizes:
     def test_skips_audio_only_formats(self):
         formats = [{'format_id': '251', 'ext': 'webm', 'tbr': 128, 'filesize': 50000}]
         assert self.extractor._parse_qualities(formats, duration=100) == []
+
+    def test_skips_storyboard_formats(self):
+        formats = [
+            {'format_id': 'sb0', 'ext': 'mhtml', 'height': 1080, 'tbr': 50},
+            {'format_id': 'sb1', 'ext': 'mhtml', 'height': 720, 'format_note': 'storyboard'},
+            {'format_id': '137', 'ext': 'mp4', 'height': 1080, 'tbr': 4000, 'filesize': 100},
+        ]
+        qualities = self.extractor._parse_qualities(formats, duration=0)
+        assert [q.name for q in qualities] == ['1080p']

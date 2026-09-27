@@ -4,6 +4,7 @@
 >
 > - **现成方案**：`HTTPS_PROXY=http://127.0.0.1:7897 HTTP_PROXY=http://127.0.0.1:7897 yt-dlp --cookies-from-browser chrome -f "bv*[height<=1080]+ba/b" --merge-output-format mp4 -o "downloads/%(title).70s.%(ext)s" <URL>`，前提 yt-dlp 是 brew 最新版（≥2026.x）。
 > - **适用条件**：macOS Apple Silicon 本机、Clash 类代理 7897 在跑、Chrome 有 YouTube 登录态；**系统 Python 3.9 环境的 `yt_dlp` 模块（pip 最高只到 2025.10.14）不行**，会 403。
+> - **4K/2160p**：yt-dlp 2026.08+ 三要素齐备时已直接可下（`-f "bv*[height<=2160]+ba/b"`），无需 PO Token 插件；只看 `-F` 列表不算数，要实拉一段验证。
 
 ---
 
@@ -59,11 +60,12 @@
 - **替代方案**：所有 yt-dlp 调用前设 `HTTPS_PROXY=http://127.0.0.1:7897`（端口以 USAGE.md 为准）。
 - **判定时效**：2026-09-27，强网络环境依赖；换网络环境（如海外直连）后此条不再适用。
 
-## 🔶 4K/2160p 下载需要 PO Token Provider 方案（2026-09-27，未验证）
+## ✅ 4K/2160p：新版 yt-dlp 2026.08+ 已直接拿到，无需 PO Token 插件（2026-09-27）
 
-- **当前推断**：
-  - 事实：该视频浏览器端可播 2160p（用户截图确认 YouTube 画质菜单含 2160p 4K / 1440p HD），yt-dlp 2025.10.14 各客户端只返回到 1080p H.264；4K 流（VP9/AV1）需通过 PO Token 校验才下发。
-  - 推断（未验证）：社区标准解法是 `bgutil-ytdlp-pot-provider` 插件 + 本地 Node 服务生成令牌；**新版 yt-dlp 2026.08.19 是否默认已能拿到 2160p 流清单尚未探测**（成功下载时用了 `-f "height<=1080"` 限制，未确认 2160p 是否在列表中）。
-- **已到哪一步**：1080p 下载链路已通（✅ 条目）；4K 仅完成问题定位，未做任何解锁尝试。
-- **下一步验证动作**：`HTTPS_PROXY=... yt-dlp --cookies-from-browser chrome -F <URL>` 看新版格式列表是否已含 2160p；没有则装 `bgutil-ytdlp-pot-provider`（Node 服务）后重测；4K 体积按 15~25 Mbps 估算约 6~10 GB/49min。
-- **为何值得继续**：用户明确问过"能不能下 4K"，将来大概率要；且 B 站同源视频若有 4K 档是替代路线（见会话上下文）。
+- **为何值得记**：2025.10.14 旧版各客户端只返回到 1080p（4K 流 VP9/AV1 被 PO Token 门槛拦下，见下方 ⛔ 条目背景），曾推断需要 `bgutil-ytdlp-pot-provider` 插件 + Node 服务才能解锁 4K；实测新版已放行，避免了不必要的插件集成。
+- **验证证据**（测试视频 `PPrzeY7H904`，49:29，浏览器端确认有 2160p 档；yt-dlp 2026.08.19 + 代理 7897 + Chrome cookies 三要素）：
+  - `yt-dlp --cookies-from-browser chrome -F <URL>`：格式列表含 **2160p 两档**——`313` webm VP9 14301k（4.94GiB）、`401` mp4 AV1 5987k（2.07GiB），另有 1440p 两档（`271` VP9 / `400` AV1）。
+  - 实拉验证：`-f "401+251" --download-sections "*0-15"` 分段下载 15 秒成功（7.8MB，含音视频合并），`ffprobe` 复核输出 `av1, 3840, 2160`——排除「格式列表可见但分片 403」的假阳性（2025.10 旧版 web_safari 客户端正是这种失败形态）。
+- **结论**：`-f "bv*[height<=2160]+ba/b"` 即可下 4K；下载链路同 ✅ 首条目（代理 + brew 新版 + cookies，缺一不可）。体积参考：49 分钟视频 VP9 4.94GiB / AV1 2.07GiB（AV1 约为 VP9 的 42%），UI 磁盘预估可直接用 yt-dlp 返回的 filesize。
+- **适用条件与时效**：基于 yt-dlp 2026.08.19 / 该测试视频 / 2026-09-27 判定；PO Token 机制变化频繁，若未来新版又拿不到 2160p，回退方案才是 `bgutil-ytdlp-pot-provider` 插件 + 本地 token 服务（评估过的方向，未实施）。B 站 4K 档登录 cookie 即可、无 PO Token 门槛，仍是替代路线。
+- **易错点**：只看 `-F` 列表不算数，必须实际拉一段流验证（历史教训：旧版 android/ios 客户端报 `Requested format is not available` 是 0 格式，web_safari 是列表有但分片 403，两种失败形态不同）。
