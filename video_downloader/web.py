@@ -114,8 +114,14 @@ class AppState:
         self.tasks: Dict[str, DownloadTask] = {}
         self.async_tasks: Dict[str, asyncio.Task] = {}
         self.sse_clients: Set[asyncio.Queue] = set()
-        self.cookie_dir = Path("./cookies")
-        self.cookie_dir.mkdir(exist_ok=True)
+        # 打包后从 Finder 启动时 cwd 只读（/），cookie 目录退回用户目录
+        cookie_dir = Path("./cookies")
+        try:
+            cookie_dir.mkdir(exist_ok=True)
+        except OSError:
+            cookie_dir = Path.home() / ".vdl" / "cookies"
+            cookie_dir.mkdir(parents=True, exist_ok=True)
+        self.cookie_dir = cookie_dir
 
     async def emit(self, event: dict):
         """Broadcast event to all connected SSE clients."""
@@ -133,6 +139,11 @@ def _make_config(cookie_name: Optional[str] = None) -> DownloaderConfig:
     config = DownloaderConfig()
     # Don't use the default ./cookies.txt — it may not exist or be locked
     config.cookie_file = ""
+    # 下载目录跟随用户设置（默认 ~/Downloads/vdl），避免打包环境下的相对路径
+    settings = _load_settings()
+    config.output_dir = os.path.expanduser(
+        settings.get("download_dir") or DEFAULT_SETTINGS["download_dir"]
+    )
     if cookie_name:
         cookie_path = state.cookie_dir / cookie_name
         if cookie_path.exists():

@@ -41,6 +41,11 @@ class DownloaderConfig:
     custom_headers: Dict[str, str] = field(default_factory=dict)
     
     def __post_init__(self):
-        """Ensure directories exist."""
-        Path(self.cookie_path).mkdir(parents=True, exist_ok=True)
-        Path(self.output_dir).mkdir(parents=True, exist_ok=True)
+        """Ensure directories exist (skip when the location is not writable)."""
+        for p in (self.cookie_path, self.output_dir):
+            try:
+                Path(p).mkdir(parents=True, exist_ok=True)
+            except OSError:
+                # 打包环境从 Finder 启动时 cwd 可能是只读的 /，目录创建失败不应让进程退出；
+                # 后续实际下载时会再以用户设置的下载目录为准
+                pass

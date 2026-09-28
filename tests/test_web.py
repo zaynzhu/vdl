@@ -231,3 +231,17 @@ class TestCookieSource:
         cookie_file, browser = _resolve_cookie_source('ck_src.txt', {})
         assert cookie_file and cookie_file.endswith('ck_src.txt') and browser is None
         (state.cookie_dir / 'ck_src.txt').unlink()
+
+
+class TestConfigDirCreation:
+
+    def test_readonly_cwd_does_not_crash(self, monkeypatch):
+        """模拟打包后从 Finder 启动：output_dir 创建失败不应让进程退出。"""
+        from video_downloader.config import DownloaderConfig
+
+        def raise_readonly(self, parents=True, exist_ok=True):
+            raise OSError(30, 'Read-only file system')
+
+        monkeypatch.setattr('pathlib.Path.mkdir', raise_readonly)
+        config = DownloaderConfig()  # 不应抛异常
+        assert config.output_dir == './downloads'
