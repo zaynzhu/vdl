@@ -141,10 +141,18 @@ yt-dlp 2026.08.19 对测试视频 `-F` 直接返回 2160p（313 VP9 4.94GiB / 40
 
 ### 剩余问题与建议下一位动作
 
-1. ~~待用户确认：签名方式、最低 macOS 版本~~ **均已确认关闭**（见「偏离与待定项处理」）；是否 push 已执行（a346fa3 及后续 docs 更新均已推 origin/main）
-2. **验收例子 1**（双击启动出窗口）需真人 GUI 确认；4K 完整下载（~5GB，代理速度约 274KB/s）建议用户自行择时验收
+1. ~~待用户确认：签名方式、最低 macOS 版本~~ **均已确认关闭**（见「偏离与待定项处理」）；是否 push 已执行（全部 commit 已推 origin/main）
+2. ~~验收例子 1（双击启动出窗口）~~ **已完成**（见下方「Finder 启动修复」）；4K 完整下载（~5GB，代理速度约 274KB/s）建议用户自行择时验收
 3. `test_ytdlp_integration.py` fixture 现存 bug（ExtractionContext 必填字段）可顺手修复
 4. 未做：应用图标、自动更新（属 Tauri 演进方向）、Intel 架构
+
+### Finder 启动修复（2026-09-28，commit 74aaf67）
+
+用户实测双击打不开。根因：打包后从 Finder/LaunchServices 启动时 **cwd 是只读的 `/`**，import 链上三处 `mkdir`（`config.py __post_init__`、`web.py AppState` 的 `./cookies`、隐含的相对路径假设）抛 `OSError: Read-only file system`，进程静默退出（无崩溃日志、无窗口）。此前验收全部从终端跑二进制（cwd 为项目目录）故未暴露。
+
+修复：① `DownloaderConfig.__post_init__` mkdir 失败改为容忍（下载时以用户设置目录为准）；② `AppState` cookie 目录失败回退 `~/.vdl/cookies`；③ `_make_config` 的 output_dir 跟随用户设置（默认 `~/Downloads/vdl`），消除相对路径。补回归测试（模拟只读 mkdir）。
+
+验收：重打包后 `open`（等价 Finder 双击）启动——stderr 干净、进程存活、窗口注册（`VDL Web Content` 等渲染进程出现）；无终端代理变量时预览照常（系统代理被自动读取），2160p 档返回正常。修复已随 dmg 重建并替换 /Applications 安装。
 
 ## 执行备案：内核改动（按 4.5 约定先记录）
 
