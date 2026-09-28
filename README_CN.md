@@ -21,7 +21,7 @@
 ---
 
 > [!TIP]
-> VDL 将 yt-dlp 封装为简洁的 CLI + MCP Server，覆盖 6 大平台，支持自动 fallback。没有 GUI，没有多余功能 —— 只需 `vdl <url>` 即可下载。
+> VDL 将 yt-dlp 封装为简洁的 CLI + MCP Server，覆盖 6 大平台，支持自动 fallback。附带本地 Web UI 与 macOS 桌面应用 —— 也可以直接 `vdl <url>` 下载。
 
 ## ✨ 特性
 
@@ -33,6 +33,7 @@
 - **MCP Server** -- 通过 Model Context Protocol 集成 AI 工具
 - **文件名模板** -- 自定义 `{title}`、`{author}`、`{id}`、`{date}`、`{platform}`
 - **画质选择** -- `1080p`、`720p`、`480p` 或 yt-dlp 格式字符串
+- **Web UI + macOS 应用** -- `vdl-web` 本地界面；可打包双击安装的 .dmg，画质下拉支持 4K/2160p 与体积预估
 
 ## 🚀 快速开始
 
@@ -73,6 +74,12 @@ pip install yt-dlp
 
 # 抖音 fallback（可选）
 playwright install chromium
+
+# Web UI（可选）
+pip install -e ".[web]"
+
+# macOS 桌面应用构建（可选，见 USAGE.md「桌面应用」节）
+pip install -e ".[web,app]" && scripts/build_desktop.sh
 ```
 
 ## 🔄 功能对比
@@ -159,9 +166,9 @@ VideoDownloader (core.py)
 <details>
 <summary><strong>yt-dlp 报错或提取失败</strong></summary>
 
-更新 yt-dlp 到最新版本：
+更新 yt-dlp 到最新版本（VDL 要求 `yt-dlp>=2026.8` —— 旧版在 YouTube 因 PO Token 反爬必挂）：
 ```bash
-pip install --upgrade yt-dlp
+pip install --upgrade "yt-dlp>=2026.8"
 ```
 </details>
 

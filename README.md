@@ -21,7 +21,7 @@
 ---
 
 > [!TIP]
-> VDL wraps yt-dlp into a clean CLI + MCP server, covering 6 major platforms with automatic fallback chains. No GUI, no bloat — just `vdl <url>` and it works.
+> VDL wraps yt-dlp into a clean CLI + MCP server, covering 6 major platforms with automatic fallback chains. A local Web UI and a macOS desktop app are included — or just `vdl <url>` and it works.
 
 ## ✨ Features
 
@@ -33,6 +33,7 @@
 - **MCP Server** -- AI tool integration via Model Context Protocol (stdio JSON-RPC)
 - **Filename Templates** -- Customizable with `{title}`, `{author}`, `{id}`, `{date}`, `{platform}`
 - **Quality Selection** -- `1080p`, `720p`, `480p` or yt-dlp format strings
+- **Web UI + macOS App** -- `vdl-web` local UI, or build a double-clickable .dmg with quality picker (up to 4K/2160p) and size estimates
 
 ## 🚀 Quick Start
 
@@ -73,6 +74,12 @@ pip install yt-dlp
 
 # Douyin fallback (optional)
 playwright install chromium
+
+# Web UI (optional)
+pip install -e ".[web]"
+
+# macOS desktop app build (optional, see USAGE.md "Desktop App")
+pip install -e ".[web,app]" && scripts/build_desktop.sh
 ```
 
 ## 🔄 Comparison
@@ -159,9 +166,9 @@ VideoDownloader (core.py)
 <details>
 <summary><strong>yt-dlp errors or extraction fails</strong></summary>
 
-Update yt-dlp to the latest version:
+Update yt-dlp to the latest version (VDL requires `yt-dlp>=2026.8` — older versions fail on YouTube due to PO Token enforcement):
 ```bash
-pip install --upgrade yt-dlp
+pip install --upgrade "yt-dlp>=2026.8"
 ```
 </details>
 
